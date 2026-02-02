@@ -126,6 +126,10 @@ Diagnostics size rotation (Step M1.5):
 - `DiagnosticsRotationManager.rotateIfNeeded()` enforces a 50MB total cap by deleting the oldest `.jsonl` files first.
 - Debug helper: `SpamDiagnostics` button in `justphoto_opencode/Features/Settings/DebugToolsScreen.swift` to generate enough logs to trigger rotation.
 
+Diagnostics age rotation (Step M1.6):
+- `DiagnosticsRotationManager.deleteOldLogs(now:maxAgeDays:)` deletes `.jsonl` files older than 30 days (based on modification date).
+- Debug helpers in `justphoto_opencode/Features/Settings/DebugToolsScreen.swift`: `CreateFakeOldLogs` and `RunRotationNow`.
+
 
 Feature modules (SwiftUI-first):
 - `Features/Camera/`

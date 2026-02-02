@@ -67,6 +67,46 @@ struct DebugToolsScreen: View {
                 }
                 .disabled(isRunning)
 
+                Button("CreateFakeOldLogs") {
+                    guard !isRunning else { return }
+                    isRunning = true
+                    statusText = "CreateFakeOldLogs: running..."
+                    statusIsError = false
+
+                    Task {
+                        let result = createFakeOldLogs()
+                        await MainActor.run {
+                            isRunning = false
+                            statusText = result.statusText
+                            statusIsError = !result.ok
+                            alertTitle = result.ok ? "Fake logs created" : "CreateFakeOldLogs failed"
+                            alertMessage = result.alertMessage
+                            showAlert = true
+                        }
+                    }
+                }
+                .disabled(isRunning)
+
+                Button("RunRotationNow") {
+                    guard !isRunning else { return }
+                    isRunning = true
+                    statusText = "RunRotationNow: running..."
+                    statusIsError = false
+
+                    Task {
+                        let result = runRotationNow()
+                        await MainActor.run {
+                            isRunning = false
+                            statusText = result.statusText
+                            statusIsError = !result.ok
+                            alertTitle = result.ok ? "Rotation complete" : "RunRotationNow failed"
+                            alertMessage = result.alertMessage
+                            showAlert = true
+                        }
+                    }
+                }
+                .disabled(isRunning)
+
                 Button {
                     guard !isRunning else { return }
                     isRunning = true
@@ -207,6 +247,66 @@ struct DebugToolsScreen: View {
             return (
                 ok: false,
                 statusText: "SpamDiagnostics: FAILED\n\(error.localizedDescription)",
+                alertMessage: error.localizedDescription
+            )
+        }
+    }
+
+    private func createFakeOldLogs() -> (ok: Bool, statusText: String, alertMessage: String) {
+        do {
+            let logger = DiagnosticsLogger()
+            let dir = try logger.diagnosticsDirectoryURL()
+
+            let oldDate = Date().addingTimeInterval(-40 * 24 * 60 * 60)
+            let recentDate = Date().addingTimeInterval(-2 * 24 * 60 * 60)
+
+            let old1 = dir.appendingPathComponent("fake-old-1.jsonl")
+            let old2 = dir.appendingPathComponent("fake-old-2.jsonl")
+            let recent = dir.appendingPathComponent("fake-recent.jsonl")
+
+            try Data("{}\n".utf8).write(to: old1, options: Data.WritingOptions.atomic)
+            try Data("{}\n".utf8).write(to: old2, options: Data.WritingOptions.atomic)
+            try Data("{}\n".utf8).write(to: recent, options: Data.WritingOptions.atomic)
+
+            try FileManager.default.setAttributes([.modificationDate: oldDate], ofItemAtPath: old1.path)
+            try FileManager.default.setAttributes([.modificationDate: oldDate], ofItemAtPath: old2.path)
+            try FileManager.default.setAttributes([.modificationDate: recentDate], ofItemAtPath: recent.path)
+
+            print("CreateFakeOldLogsCreated: \([old1.lastPathComponent, old2.lastPathComponent, recent.lastPathComponent])")
+
+            let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+            return (
+                ok: true,
+                statusText: "CreateFakeOldLogs: OK\n\nDiagnosticsDirectory:\n\(dir.path)\n\nFiles:\n\(names.sorted().joined(separator: "\n"))",
+                alertMessage: "Created 2 old logs (~40d) and 1 recent (~2d)."
+            )
+        } catch {
+            return (
+                ok: false,
+                statusText: "CreateFakeOldLogs: FAILED\n\(error.localizedDescription)",
+                alertMessage: error.localizedDescription
+            )
+        }
+    }
+
+    private func runRotationNow() -> (ok: Bool, statusText: String, alertMessage: String) {
+        do {
+            let logger = DiagnosticsLogger()
+            let dir = try logger.diagnosticsDirectoryURL()
+            let rotation = DiagnosticsRotationManager(maxTotalBytes: 50 * 1024 * 1024)
+
+            try rotation.deleteOldLogs(now: Date(), maxAgeDays: 30)
+
+            let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+            return (
+                ok: true,
+                statusText: "RunRotationNow: OK\n\nRemaining files:\n\(names.sorted().joined(separator: "\n"))",
+                alertMessage: "Check console for RotationByAgeDeletedFiles."
+            )
+        } catch {
+            return (
+                ok: false,
+                statusText: "RunRotationNow: FAILED\n\(error.localizedDescription)",
                 alertMessage: error.localizedDescription
             )
         }

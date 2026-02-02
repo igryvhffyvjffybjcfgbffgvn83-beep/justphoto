@@ -65,6 +65,55 @@ struct DiagnosticsRotationManager: Sendable {
         }
     }
 
+    func deleteOldLogs(now: Date = .init(), maxAgeDays: Int = 30) throws {
+        let dir = try diagnosticsDirectoryURL()
+        let fm = FileManager.default
+
+        let fileURLs = (try? fm.contentsOfDirectory(
+            at: dir,
+            includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey],
+            options: [.skipsHiddenFiles]
+        )) ?? []
+
+        let cutoff = now.addingTimeInterval(TimeInterval(-maxAgeDays) * 24 * 60 * 60)
+
+        struct Entry {
+            let url: URL
+            let modifiedAt: Date
+        }
+
+        var toDelete: [Entry] = []
+        for url in fileURLs where url.pathExtension.lowercased() == "jsonl" {
+            let values = try? url.resourceValues(forKeys: [.contentModificationDateKey])
+            let modifiedAt = values?.contentModificationDate ?? .distantPast
+            if modifiedAt < cutoff {
+                toDelete.append(Entry(url: url, modifiedAt: modifiedAt))
+            }
+        }
+
+        guard !toDelete.isEmpty else { return }
+
+        toDelete.sort { a, b in
+            if a.modifiedAt != b.modifiedAt { return a.modifiedAt < b.modifiedAt }
+            return a.url.lastPathComponent < b.url.lastPathComponent
+        }
+
+        var deleted: [String] = []
+        for e in toDelete {
+            do {
+                try fm.removeItem(at: e.url)
+                deleted.append(e.url.lastPathComponent)
+            } catch {
+                continue
+            }
+        }
+
+        if !deleted.isEmpty {
+            print("RotationByAgeTriggered")
+            print("RotationByAgeDeletedFiles: \(deleted)")
+        }
+    }
+
     private func diagnosticsDirectoryURL() throws -> URL {
         let base = try FileManager.default.url(
             for: .applicationSupportDirectory,
