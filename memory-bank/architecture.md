@@ -110,6 +110,10 @@ Diagnostics module scaffolding (Step M1.1):
 - `justphoto_opencode/Infrastructure/Diagnostics/DiagnosticsRotationManager.swift` (rotation policy placeholder)
 - `justphoto_opencode/Infrastructure/Diagnostics/DiagnosticsExporter.swift` (export/share placeholder)
 
+Diagnostics event contract (Step M1.2):
+- `DiagnosticsEvent` encodes a single JSON line with required top-level keys: `ts_ms`, `session_id`, `event`, `scene`, `payload`.
+- `DiagnosticsLogger.encodeJSONLine(...)` produces the JSON line string (file writing/export are implemented in later steps).
+
 
 Feature modules (SwiftUI-first):
 - `Features/Camera/`
