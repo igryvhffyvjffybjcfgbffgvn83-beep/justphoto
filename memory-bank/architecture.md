@@ -53,6 +53,9 @@ Debug-only UI policy:
 - Debug Tools UI is guarded by `#if DEBUG` in `justphoto_opencode/Features/Settings/SettingsSheet.swift` and `justphoto_opencode/Features/Settings/DebugToolsScreen.swift`.
 - Project build settings explicitly prevent `DEBUG` from being defined in Release (see `SWIFT_ACTIVE_COMPILATION_CONDITIONS` in `justphoto_opencode.xcodeproj/project.pbxproj`).
 
+Debug Tools currently include:
+- A `DebugToolsPing` button in `justphoto_opencode/Features/Settings/DebugToolsScreen.swift` that prints `DebugToolsPing` to Xcode console for quick plumbing verification.
+
 7) Inspiration (ODR + Network.framework)
 - ODR downloads reference images on-demand.
 - Offline degrades to keywords-only.
