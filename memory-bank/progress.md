@@ -8,7 +8,7 @@ Rule: Each checkpoint is either `[ ]` (not done) or `[x]` (done). Update immedia
 - [x] M0.2 Create top-level folder/groups in Xcode
 - [x] M0.3 Create empty screen files (no logic)
 - [x] M0.4 Add Info.plist permission strings
-- [ ] M0.5 Add Debug Tools entry (Debug build only)
+- [x] M0.5 Add Debug Tools entry (Debug build only)
 - [ ] M0.6 Add “DebugToolsPing” button
 
 ## Milestone 1 — Diagnostics Log (A.13) + GRDB + SessionStore Base (Recoverable)

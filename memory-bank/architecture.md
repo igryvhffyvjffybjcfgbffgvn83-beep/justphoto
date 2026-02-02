@@ -49,6 +49,10 @@ Project-level configuration notes:
 - Logs prompt show/dismiss/action locally (A.12 recommended, local only).
 - VoiceOver changes toast/banner timing (no in-app TTS).
 
+Debug-only UI policy:
+- Debug Tools UI is guarded by `#if DEBUG` in `justphoto_opencode/Features/Settings/SettingsSheet.swift` and `justphoto_opencode/Features/Settings/DebugToolsScreen.swift`.
+- Project build settings explicitly prevent `DEBUG` from being defined in Release (see `SWIFT_ACTIVE_COMPILATION_CONDITIONS` in `justphoto_opencode.xcodeproj/project.pbxproj`).
+
 7) Inspiration (ODR + Network.framework)
 - ODR downloads reference images on-demand.
 - Offline degrades to keywords-only.

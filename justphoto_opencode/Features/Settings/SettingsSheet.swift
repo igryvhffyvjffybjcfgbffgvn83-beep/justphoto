@@ -9,6 +9,14 @@ struct SettingsSheet: View {
                 Section("Settings") {
                     Text("MVP shell")
                 }
+
+#if DEBUG
+                Section("Debug") {
+                    NavigationLink("Debug Tools") {
+                        DebugToolsScreen()
+                    }
+                }
+#endif
             }
             .navigationTitle("Settings")
             .toolbar {
