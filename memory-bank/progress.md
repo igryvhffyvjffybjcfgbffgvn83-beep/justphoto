@@ -21,7 +21,7 @@ Rule: Each checkpoint is either `[ ]` (not done) or `[x]` (done). Update immedia
 - [x] M1.4 Implement log file location and naming
 - [x] M1.5 Implement rotation by total size (50MB)
 - [x] M1.6 Implement rotation by age (30 days)
-- [ ] M1.7 Implement Settings “Export Diagnostics Logs”
+- [x] M1.7 Implement Settings “Export Diagnostics Logs”
 - [ ] M1.8 Add A.13 required events (just the ability to write them)
 
 ### 1B. GRDB (third-party) + DB bootstrap

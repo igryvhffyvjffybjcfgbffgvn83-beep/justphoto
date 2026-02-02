@@ -130,6 +130,11 @@ Diagnostics age rotation (Step M1.6):
 - `DiagnosticsRotationManager.deleteOldLogs(now:maxAgeDays:)` deletes `.jsonl` files older than 30 days (based on modification date).
 - Debug helpers in `justphoto_opencode/Features/Settings/DebugToolsScreen.swift`: `CreateFakeOldLogs` and `RunRotationNow`.
 
+Diagnostics export (Step M1.7):
+- Settings includes an "Export Diagnostics Logs" action in `justphoto_opencode/Features/Settings/SettingsSheet.swift`.
+- Export is implemented as a single merged `.txt` artifact created by `DiagnosticsExporter.exportDiagnosticsFile()` for reliable share sheet saving.
+- Sharing uses a SwiftUI wrapper `justphoto_opencode/Infrastructure/Diagnostics/ShareSheet.swift`.
+
 
 Feature modules (SwiftUI-first):
 - `Features/Camera/`
