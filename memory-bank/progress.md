@@ -15,7 +15,7 @@ Rule: Each checkpoint is either `[ ]` (not done) or `[x]` (done). Update immedia
 
 ### 1A. Diagnostics Log (PRD A.13)
 
-- [ ] M1.1 Create diagnostics module files
+- [x] M1.1 Create diagnostics module files
 - [ ] M1.2 Define mandatory JSONL record fields (A.13)
 - [ ] M1.3 Implement “append one JSON line”
 - [ ] M1.4 Implement log file location and naming

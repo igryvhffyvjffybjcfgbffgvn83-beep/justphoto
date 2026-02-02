@@ -104,6 +104,12 @@ Scaffolding folders created in repo root (Step M0.2):
 Note:
 - `.gitkeep` files exist only to allow Git to track empty directories during early scaffolding.
 
+Diagnostics module scaffolding (Step M1.1):
+- `justphoto_opencode/Infrastructure/Diagnostics/DiagnosticsEvent.swift` (event model placeholder)
+- `justphoto_opencode/Infrastructure/Diagnostics/DiagnosticsLogger.swift` (logging façade placeholder)
+- `justphoto_opencode/Infrastructure/Diagnostics/DiagnosticsRotationManager.swift` (rotation policy placeholder)
+- `justphoto_opencode/Infrastructure/Diagnostics/DiagnosticsExporter.swift` (export/share placeholder)
+
 
 Feature modules (SwiftUI-first):
 - `Features/Camera/`
