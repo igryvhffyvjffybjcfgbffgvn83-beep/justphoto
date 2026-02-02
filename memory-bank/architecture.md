@@ -72,6 +72,18 @@ Current Xcode project (already present):
 - `justphoto_opencode.xcodeproj/` (Xcode project + scheme)
 - `justphoto_opencode/` (app source folder)
 
+Step M0.3 UI shells (SwiftUI, no business logic yet):
+- `justphoto_opencode/Features/Camera/CameraScreen.swift` (main entry shell; presents sheets; links to Viewer/Wrap)
+- `justphoto_opencode/Features/Viewer/ViewerScreen.swift` (viewer shell)
+- `justphoto_opencode/Features/Settings/SettingsSheet.swift` (settings shell)
+- `justphoto_opencode/Features/Paywall/PaywallSheet.swift` (paywall shell)
+- `justphoto_opencode/Features/Inspiration/InspirationSheet.swift` (inspiration shell)
+- `justphoto_opencode/Features/Wrap/WrapScreen.swift` (wrap shell)
+- `justphoto_opencode/Features/DownReasons/DownReasonsSheet.swift` (down reasons shell)
+
+Entry wiring (current):
+- `justphoto_opencode/ContentView.swift` -> shows `CameraScreen`
+
 Scaffolding folders created in repo root (Step M0.2):
 - `App/` (reserved for app entry/root navigation wiring)
 - `Features/` (feature modules: Camera/Viewer/Settings/Paywall/Inspiration/Wrap/DownReasons)

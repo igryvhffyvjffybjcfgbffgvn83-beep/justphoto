@@ -6,7 +6,7 @@ Rule: Each checkpoint is either `[ ]` (not done) or `[x]` (done). Update immedia
 
 - [x] M0.1 Create Xcode project (iOS 16+, Swift)
 - [x] M0.2 Create top-level folder/groups in Xcode
-- [ ] M0.3 Create empty screen files (no logic)
+- [x] M0.3 Create empty screen files (no logic)
 - [ ] M0.4 Add Info.plist permission strings
 - [ ] M0.5 Add Debug Tools entry (Debug build only)
 - [ ] M0.6 Add “DebugToolsPing” button
