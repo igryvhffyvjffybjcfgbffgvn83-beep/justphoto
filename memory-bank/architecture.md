@@ -122,6 +122,10 @@ Diagnostics location + naming (Step M1.4):
 - File naming: `diagnostics-YYYY-MM-DD.jsonl` (day-stamped)
 - Debug helper: `PrintDiagnosticsPath` button in `justphoto_opencode/Features/Settings/DebugToolsScreen.swift`
 
+Diagnostics size rotation (Step M1.5):
+- `DiagnosticsRotationManager.rotateIfNeeded()` enforces a 50MB total cap by deleting the oldest `.jsonl` files first.
+- Debug helper: `SpamDiagnostics` button in `justphoto_opencode/Features/Settings/DebugToolsScreen.swift` to generate enough logs to trigger rotation.
+
 
 Feature modules (SwiftUI-first):
 - `Features/Camera/`

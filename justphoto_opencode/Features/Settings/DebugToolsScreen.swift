@@ -47,6 +47,26 @@ struct DebugToolsScreen: View {
                     }
                 }
 
+                Button("SpamDiagnostics") {
+                    guard !isRunning else { return }
+                    isRunning = true
+                    statusText = "SpamDiagnostics: running..."
+                    statusIsError = false
+
+                    Task {
+                        let result = spamDiagnostics()
+                        await MainActor.run {
+                            isRunning = false
+                            statusText = result.statusText
+                            statusIsError = !result.ok
+                            alertTitle = result.ok ? "SpamDiagnostics done" : "SpamDiagnostics failed"
+                            alertMessage = result.alertMessage
+                            showAlert = true
+                        }
+                    }
+                }
+                .disabled(isRunning)
+
                 Button {
                     guard !isRunning else { return }
                     isRunning = true
@@ -138,6 +158,56 @@ struct DebugToolsScreen: View {
                 ok: false,
                 statusText: "WriteTestDiagnostic: FAILED (encode error)",
                 alertMessage: "Encode/parse failed: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    private func spamDiagnostics() -> (ok: Bool, statusText: String, alertMessage: String) {
+        do {
+            let logger = DiagnosticsLogger()
+            let file = try logger.currentLogFileURL()
+            let dir = try logger.diagnosticsDirectoryURL()
+
+            let rotation = DiagnosticsRotationManager(maxTotalBytes: 50 * 1024 * 1024)
+
+            // Roughly ~1KB per line. Write enough to cross 50MB quickly, then rotate.
+            // This is debug-only and used solely to validate size rotation.
+            let payloadString = String(repeating: "x", count: 900)
+            let targetLines = 80_000
+
+            for i in 0..<targetLines {
+                let event = DiagnosticsEvent(
+                    ts_ms: Int64(Date().timeIntervalSince1970 * 1000),
+                    session_id: "dev_session",
+                    event: "spam",
+                    scene: "cafe",
+                    payload: [
+                        "i": String(i),
+                        "data": payloadString
+                    ]
+                )
+
+                let line = try logger.encodeJSONLine(event)
+                _ = try logger.appendJSONLine(line)
+
+                if i % 2000 == 0 {
+                    try rotation.rotateIfNeeded()
+                }
+            }
+
+            try rotation.rotateIfNeeded()
+            let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+
+            return (
+                ok: true,
+                statusText: "SpamDiagnostics: OK\n\nDiagnosticsDirectory:\n\(dir.path)\n\nCurrentFile:\n\(file.path)",
+                alertMessage: "Done. Check console for RotationBySizeTriggered and file list: \(names.sorted())"
+            )
+        } catch {
+            return (
+                ok: false,
+                statusText: "SpamDiagnostics: FAILED\n\(error.localizedDescription)",
+                alertMessage: error.localizedDescription
             )
         }
     }
