@@ -74,6 +74,9 @@ struct DebugToolsScreen: View {
             let line = try logger.encodeJSONLine(event)
             print(line)
 
+            let appendResult = try logger.appendJSONLine(line)
+            print("DiagnosticAppended")
+
             let data = Data(line.utf8)
             if let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
                 let requiredKeys = ["ts_ms", "session_id", "event", "scene", "payload"]
@@ -83,13 +86,13 @@ struct DebugToolsScreen: View {
                 if ok {
                     return (
                         ok: true,
-                        statusText: "WriteTestDiagnostic: OK\n\n\(line)",
-                        alertMessage: "Success. A JSON line was generated."
+                        statusText: "WriteTestDiagnostic: OK\n\nfile: \(appendResult.fileURL.path)\nbytes: \(appendResult.bytesBefore) -> \(appendResult.bytesAfter)\n\n\(line)",
+                        alertMessage: "Success. A JSON line was appended (see file path in status)."
                     )
                 } else {
                     return (
                         ok: false,
-                        statusText: "WriteTestDiagnostic: FAILED (missing required fields)\n\n\(line)",
+                        statusText: "WriteTestDiagnostic: FAILED (missing required fields)\n\nfile: \(appendResult.fileURL.path)\nbytes: \(appendResult.bytesBefore) -> \(appendResult.bytesAfter)\n\n\(line)",
                         alertMessage: "JSON generated, but required keys are missing."
                     )
                 }

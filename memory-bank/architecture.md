@@ -114,6 +114,9 @@ Diagnostics event contract (Step M1.2):
 - `DiagnosticsEvent` encodes a single JSON line with required top-level keys: `ts_ms`, `session_id`, `event`, `scene`, `payload`.
 - `DiagnosticsLogger.encodeJSONLine(...)` produces the JSON line string (file writing/export are implemented in later steps).
 
+Diagnostics JSONL append (Step M1.3):
+- `DiagnosticsLogger.appendJSONLine(...)` appends a single JSON line to `Application Support/JustPhoto/Diagnostics/diagnostics.jsonl` (creates the file if missing).
+
 
 Feature modules (SwiftUI-first):
 - `Features/Camera/`
