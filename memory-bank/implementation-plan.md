@@ -1,6 +1,6 @@
 # Implementation Plan (Atomic++ / Verification-First) — Just Photo MVP (iOS 16+)
 
-Scope: MVP only. Follow `JustPhoto_PRD.md v1.1.4` + `PoseSpec.json prdVersion=v1.1.4`. Local-only data and logs. No account. No photo upload. No remote analytics SDK.
+Scope: MVP only. Follow `memory-bank/product-requirement.md v1.1.4` + `memory-bank/PoseSpec.json prdVersion=v1.1.4`. Local-only data and logs. No account. No photo upload. No remote analytics SDK.
 
 Tech stack binding (Glue Coding):
 - Apple APIs: Swift, SwiftUI + UIKit bridge, AVFoundation, Vision, PhotoKit, Network.framework (NWPathMonitor), On-Demand Resources, StoreKit 2, OSLog
