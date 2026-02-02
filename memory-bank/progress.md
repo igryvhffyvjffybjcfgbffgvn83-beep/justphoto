@@ -4,8 +4,8 @@ Rule: Each checkpoint is either `[ ]` (not done) or `[x]` (done). Update immedia
 
 ## Milestone 0 — Project Skeleton (Runs + Navigates + Debug Hooks)
 
-- [ ] M0.1 Create Xcode project (iOS 16+, Swift)
-- [ ] M0.2 Create top-level folder/groups in Xcode
+- [x] M0.1 Create Xcode project (iOS 16+, Swift)
+- [x] M0.2 Create top-level folder/groups in Xcode
 - [ ] M0.3 Create empty screen files (no logic)
 - [ ] M0.4 Add Info.plist permission strings
 - [ ] M0.5 Add Debug Tools entry (Debug build only)

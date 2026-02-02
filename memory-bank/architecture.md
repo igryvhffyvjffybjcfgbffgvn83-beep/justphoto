@@ -68,6 +68,19 @@ Top-level:
 - `Infrastructure/`
 - `Resources/` (PoseSpec, local catalogs, ODR metadata)
 
+Current Xcode project (already present):
+- `justphoto_opencode.xcodeproj/` (Xcode project + scheme)
+- `justphoto_opencode/` (app source folder)
+
+Scaffolding folders created in repo root (Step M0.2):
+- `App/` (reserved for app entry/root navigation wiring)
+- `Features/` (feature modules: Camera/Viewer/Settings/Paywall/Inspiration/Wrap/DownReasons)
+- `Infrastructure/` (shared services: Diagnostics/Prompt/Session/Photos/PoseSpec/Network/Purchases)
+- `Resources/` (bundle resources: PoseSpec, local catalogs, ODR metadata)
+
+Note:
+- `.gitkeep` files exist only to allow Git to track empty directories during early scaffolding.
+
 Feature modules (SwiftUI-first):
 - `Features/Camera/`
   - CameraScreen (UI)
