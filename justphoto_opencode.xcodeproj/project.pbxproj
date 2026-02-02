@@ -256,6 +256,9 @@
 				DEVELOPMENT_TEAM = 589M7G78S4;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Just Photo 需要使用相机来拍照。";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Just Photo 需要将照片保存到你的相册。";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Just Photo 需要访问你的相册来导入照片和参考图。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -288,6 +291,9 @@
 				DEVELOPMENT_TEAM = 589M7G78S4;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Just Photo 需要使用相机来拍照。";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Just Photo 需要将照片保存到你的相册。";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Just Photo 需要访问你的相册来导入照片和参考图。";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

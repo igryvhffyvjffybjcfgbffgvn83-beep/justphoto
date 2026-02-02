@@ -29,6 +29,10 @@ The app is a single-device, offline-first iOS app with these major subsystems:
 - Adds assets to the “Just Photo” album; failures produce `album_add_failed` (non-blocking) and support retries.
 - Limited Access support includes phantom asset healing and `phantom_asset_detected` diagnostics.
 
+Project-level configuration notes:
+- This project uses Xcode-generated Info.plist (`GENERATE_INFOPLIST_FILE=YES`). Privacy strings are set via build settings `INFOPLIST_KEY_*` in `justphoto_opencode.xcodeproj/project.pbxproj`.
+- Step M0.4 adds the required usage descriptions: Camera, Photo Library (read), Photo Library (add).
+
 4) Session System (Business Session; not AVCaptureSession)
 - A “Session” is a local workset (max 20) that drives filmstrip/viewer/wrap.
 - Persistence is via SQLite (GRDB) plus file-based caches for pending writes and thumbnails.
@@ -92,6 +96,7 @@ Scaffolding folders created in repo root (Step M0.2):
 
 Note:
 - `.gitkeep` files exist only to allow Git to track empty directories during early scaffolding.
+
 
 Feature modules (SwiftUI-first):
 - `Features/Camera/`
