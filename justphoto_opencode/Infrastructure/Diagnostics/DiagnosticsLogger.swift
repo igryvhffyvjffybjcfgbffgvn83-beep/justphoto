@@ -3,6 +3,14 @@ import Foundation
 final class DiagnosticsLogger: Sendable {
     init() {}
 
+    private static let dayStampFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(secondsFromGMT: 0)
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+
     func encodeJSONLine(_ event: DiagnosticsEvent) throws -> String {
         let data = try JSONEncoder().encode(event)
         guard let line = String(data: data, encoding: .utf8) else {
@@ -11,7 +19,7 @@ final class DiagnosticsLogger: Sendable {
         return line
     }
 
-    func currentLogFileURL() throws -> URL {
+    func diagnosticsDirectoryURL() throws -> URL {
         let base = try FileManager.default.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,
@@ -23,7 +31,13 @@ final class DiagnosticsLogger: Sendable {
             .appendingPathComponent("Diagnostics", isDirectory: true)
 
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("diagnostics.jsonl", isDirectory: false)
+        return dir
+    }
+
+    func currentLogFileURL(now: Date = .init()) throws -> URL {
+        let dir = try diagnosticsDirectoryURL()
+        let day = Self.dayStampFormatter.string(from: now)
+        return dir.appendingPathComponent("diagnostics-\(day).jsonl", isDirectory: false)
     }
 
     func fileSizeBytes(at url: URL) -> Int64 {

@@ -18,7 +18,7 @@ Rule: Each checkpoint is either `[ ]` (not done) or `[x]` (done). Update immedia
 - [x] M1.1 Create diagnostics module files
 - [x] M1.2 Define mandatory JSONL record fields (A.13)
 - [x] M1.3 Implement “append one JSON line”
-- [ ] M1.4 Implement log file location and naming
+- [x] M1.4 Implement log file location and naming
 - [ ] M1.5 Implement rotation by total size (50MB)
 - [ ] M1.6 Implement rotation by age (30 days)
 - [ ] M1.7 Implement Settings “Export Diagnostics Logs”

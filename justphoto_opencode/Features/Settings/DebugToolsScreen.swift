@@ -19,6 +19,34 @@ struct DebugToolsScreen: View {
                     print("DebugToolsPing")
                 }
 
+                Button("PrintDiagnosticsPath") {
+                    do {
+                        let logger = DiagnosticsLogger()
+                        let dir = try logger.diagnosticsDirectoryURL()
+                        let file = try logger.currentLogFileURL()
+
+                        print("DiagnosticsDirectory: \(dir.path)")
+                        print("DiagnosticsPath: \(file.path)")
+
+                        let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+                        if !names.isEmpty {
+                            print("DiagnosticsFiles: \(names.sorted())")
+                        }
+
+                        statusText = "DiagnosticsDirectory:\n\(dir.path)\n\nDiagnosticsPath:\n\(file.path)"
+                        statusIsError = false
+                        alertTitle = "Diagnostics path"
+                        alertMessage = file.path
+                        showAlert = true
+                    } catch {
+                        statusText = "PrintDiagnosticsPath: FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "Diagnostics path failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
                 Button {
                     guard !isRunning else { return }
                     isRunning = true

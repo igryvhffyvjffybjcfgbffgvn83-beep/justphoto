@@ -117,6 +117,11 @@ Diagnostics event contract (Step M1.2):
 Diagnostics JSONL append (Step M1.3):
 - `DiagnosticsLogger.appendJSONLine(...)` appends a single JSON line to `Application Support/JustPhoto/Diagnostics/diagnostics.jsonl` (creates the file if missing).
 
+Diagnostics location + naming (Step M1.4):
+- Directory: `Application Support/JustPhoto/Diagnostics/`
+- File naming: `diagnostics-YYYY-MM-DD.jsonl` (day-stamped)
+- Debug helper: `PrintDiagnosticsPath` button in `justphoto_opencode/Features/Settings/DebugToolsScreen.swift`
+
 
 Feature modules (SwiftUI-first):
 - `Features/Camera/`
