@@ -102,6 +102,44 @@ struct DebugToolsScreen: View {
                     }
                 }
 
+                Button("CreateNewSession") {
+                    do {
+                        let id = try SessionRepository.shared.createNewSession(scene: "cafe")
+                        print("SessionCreated:\(id)")
+
+                        statusText = "CreateNewSession: OK\n\nSessionCreated:\n\(id)"
+                        statusIsError = false
+                        alertTitle = "Session created"
+                        alertMessage = id
+                        showAlert = true
+                    } catch {
+                        statusText = "CreateNewSession: FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "Session create failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
+                Button("PrintSessionId") {
+                    do {
+                        let id = try SessionRepository.shared.currentSessionId() ?? "<nil>"
+                        print("CurrentSessionId:\(id)")
+
+                        statusText = "CurrentSessionId:\n\(id)"
+                        statusIsError = false
+                        alertTitle = "Current session"
+                        alertMessage = id
+                        showAlert = true
+                    } catch {
+                        statusText = "PrintSessionId: FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "PrintSessionId failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
                 Button("SpamDiagnostics") {
                     guard !isRunning else { return }
                     isRunning = true

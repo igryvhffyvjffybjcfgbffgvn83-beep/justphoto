@@ -191,6 +191,9 @@ Ref items table (Step M1.15):
 Local stats table (Step M1.16):
 - `DatabaseMigratorFactory` registers migration `v5_local_stats` which creates the `local_stats` table.
 
+Session repository (Step M1.17):
+- `justphoto_opencode/Infrastructure/Session/SessionRepository.swift` is the single read/write gateway for current session identity and lifecycle.
+
 ## Core Data Model (Local)
 
 SQLite (GRDB):
