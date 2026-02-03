@@ -91,6 +91,10 @@ struct DebugToolsScreen: View {
                     promptCenter.show(makeTestL3Prompt(key: "B", title: "Test B"))
                 }
 
+                Button("ShowTestToast") {
+                    promptCenter.show(makeTestL1ToastPrompt(key: "toast_test"))
+                }
+
                 Button("PrintDiagnosticsPath") {
                     do {
                         let logger = DiagnosticsLogger()
@@ -504,6 +508,7 @@ struct DebugToolsScreen: View {
             }
         }
         .navigationTitle("Debug Tools")
+        .promptHost()
         .sheet(item: modalPromptBinding) { prompt in
             PromptDebugModal(prompt: prompt)
                 .interactiveDismissDisabled(true)
@@ -825,6 +830,35 @@ struct DebugToolsScreen: View {
             primaryTitle: "OK",
             secondaryActionId: "secondary",
             secondaryTitle: "Cancel",
+            tertiaryActionId: nil,
+            tertiaryTitle: nil,
+            throttle: .init(
+                perKeyMinIntervalSec: 0,
+                globalWindowSec: 0,
+                globalMaxCountInWindow: 0,
+                suppressAfterDismissSec: 0
+            ),
+            payload: [:],
+            emittedAt: Date()
+        )
+    }
+
+    private func makeTestL1ToastPrompt(key: String) -> Prompt {
+        Prompt(
+            key: key,
+            level: .L1,
+            surface: .cameraToastBottom,
+            priority: 10,
+            blocksShutter: false,
+            isClosable: false,
+            autoDismissSeconds: 4.0,
+            gate: .none,
+            title: nil,
+            message: "Toast: \(key)",
+            primaryActionId: nil,
+            primaryTitle: nil,
+            secondaryActionId: nil,
+            secondaryTitle: nil,
             tertiaryActionId: nil,
             tertiaryTitle: nil,
             throttle: .init(

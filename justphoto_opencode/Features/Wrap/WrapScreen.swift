@@ -10,9 +10,11 @@ struct WrapScreen: View {
         }
         .padding()
         .navigationTitle("Wrap")
+        .promptHost()
     }
 }
 
 #Preview {
     NavigationStack { WrapScreen() }
+        .environmentObject(PromptCenter())
 }

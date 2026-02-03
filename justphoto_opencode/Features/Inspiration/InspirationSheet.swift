@@ -19,6 +19,7 @@ struct InspirationSheet: View {
                 }
             }
         }
+        .promptHost()
     }
 }
 

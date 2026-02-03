@@ -17,6 +17,7 @@ struct DownReasonsSheet: View {
                 }
             }
         }
+        .promptHost()
     }
 }
 

@@ -53,6 +53,7 @@ struct SettingsSheet: View {
                 }
             }
         }
+        .promptHost()
         .sheet(isPresented: $showingExportSheet) {
             ShareSheet(activityItems: exportItems)
         }

@@ -10,9 +10,11 @@ struct ViewerScreen: View {
         }
         .padding()
         .navigationTitle("Viewer")
+        .promptHost()
     }
 }
 
 #Preview {
     NavigationStack { ViewerScreen() }
+        .environmentObject(PromptCenter())
 }

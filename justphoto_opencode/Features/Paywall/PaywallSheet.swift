@@ -19,6 +19,7 @@ struct PaywallSheet: View {
                 }
             }
         }
+        .promptHost()
     }
 }
 

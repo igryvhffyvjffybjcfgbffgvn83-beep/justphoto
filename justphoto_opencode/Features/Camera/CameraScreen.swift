@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct CameraScreen: View {
+    @EnvironmentObject private var promptCenter: PromptCenter
+
     @State private var showingSettings = false
     @State private var showingPaywall = false
     @State private var showingInspiration = false
@@ -20,6 +22,40 @@ struct CameraScreen: View {
                     Button("Paywall") { showingPaywall = true }
                     Button("Inspiration") { showingInspiration = true }
                 }
+
+#if DEBUG
+                Button("ShowTestToast (Camera)") {
+                    promptCenter.show(
+                        Prompt(
+                            key: "debug_toast_camera",
+                            level: .L1,
+                            surface: .cameraToastBottom,
+                            priority: 10,
+                            blocksShutter: false,
+                            isClosable: false,
+                            autoDismissSeconds: 2.0,
+                            gate: .none,
+                            title: nil,
+                            message: "Toast OK (Camera)",
+                            primaryActionId: nil,
+                            primaryTitle: nil,
+                            secondaryActionId: nil,
+                            secondaryTitle: nil,
+                            tertiaryActionId: nil,
+                            tertiaryTitle: nil,
+                            throttle: .init(
+                                perKeyMinIntervalSec: 0,
+                                globalWindowSec: 0,
+                                globalMaxCountInWindow: 0,
+                                suppressAfterDismissSec: 0
+                            ),
+                            payload: [:],
+                            emittedAt: Date()
+                        )
+                    )
+                }
+                .buttonStyle(.bordered)
+#endif
 
                 HStack(spacing: 12) {
                     NavigationLink("Viewer") { ViewerScreen() }
@@ -41,4 +77,5 @@ struct CameraScreen: View {
 
 #Preview {
     CameraScreen()
+        .environmentObject(PromptCenter())
 }

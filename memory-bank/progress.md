@@ -45,7 +45,7 @@ Rule: Each checkpoint is either `[ ]` (not done) or `[x]` (done). Update immedia
 
 - [x] M2.1 Create Prompt model file
 - [x] M2.2 Create PromptCenter (single controller)
-- [ ] M2.3 Implement L1 Toast slot
+- [x] M2.3 Implement L1 Toast slot
 - [ ] M2.4 Implement L2 Banner slot
 - [ ] M2.5 Implement L3 Modal slot
 - [ ] M2.6 Implement VoiceOver timing switch (VOICEOVER_*)
