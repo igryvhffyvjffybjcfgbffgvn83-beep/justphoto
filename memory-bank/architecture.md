@@ -168,6 +168,11 @@ Infrastructure modules:
 - `Infrastructure/Network/` (NWPathMonitor wrapper)
 - `Infrastructure/Purchases/` (StoreKit 2 wrapper)
 
+Database bootstrap (Steps M1.9-M1.10):
+- `justphoto_opencode/Infrastructure/Database/DatabasePaths.swift` defines the Application Support path for the SQLite file.
+- `justphoto_opencode/Infrastructure/Database/DatabaseQueueFactory.swift` opens a GRDB `DatabaseQueue` for a given path.
+- `justphoto_opencode/Infrastructure/Database/DatabaseMigratorFactory.swift` provides a migrator placeholder; migrations are registered in M1.12.
+
 ## Core Data Model (Local)
 
 SQLite (GRDB):

@@ -47,6 +47,25 @@ struct DebugToolsScreen: View {
                     }
                 }
 
+                Button("PrintDBPath") {
+                    do {
+                        let fileURL = try DatabasePaths.databaseFileURL()
+                        print("DBPath: \(fileURL.path)")
+
+                        statusText = "DBPath:\n\(fileURL.path)"
+                        statusIsError = false
+                        alertTitle = "DB path"
+                        alertMessage = fileURL.path
+                        showAlert = true
+                    } catch {
+                        statusText = "PrintDBPath: FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "DB path failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
                 Button("SpamDiagnostics") {
                     guard !isRunning else { return }
                     isRunning = true
