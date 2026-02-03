@@ -73,23 +73,25 @@ struct DebugToolsScreen: View {
                             throw NSError(domain: "Database", code: 1, userInfo: [NSLocalizedDescriptionKey: "DB not ready"])
                         }
 
-                        let (sessionsExists, sessionItemsExists, refItemsExists) = try queue.read { db in
+                        let (sessionsExists, sessionItemsExists, refItemsExists, localStatsExists) = try queue.read { db in
                             (
                                 try db.tableExists("sessions"),
                                 try db.tableExists("session_items"),
-                                try db.tableExists("ref_items")
+                                try db.tableExists("ref_items"),
+                                try db.tableExists("local_stats")
                             )
                         }
 
                         let sessionsText = sessionsExists ? "true" : "false"
                         let sessionItemsText = sessionItemsExists ? "true" : "false"
                         let refItemsText = refItemsExists ? "true" : "false"
-                        print("DBCheckTables: sessions=\(sessionsText) session_items=\(sessionItemsText) ref_items=\(refItemsText)")
+                        let localStatsText = localStatsExists ? "true" : "false"
+                        print("DBCheckTables: sessions=\(sessionsText) session_items=\(sessionItemsText) ref_items=\(refItemsText) local_stats=\(localStatsText)")
 
-                        statusText = "DBCheckTables\n\nsessions=\(sessionsText)\nsession_items=\(sessionItemsText)\nref_items=\(refItemsText)"
-                        statusIsError = !(sessionsExists && sessionItemsExists && refItemsExists)
+                        statusText = "DBCheckTables\n\nsessions=\(sessionsText)\nsession_items=\(sessionItemsText)\nref_items=\(refItemsText)\nlocal_stats=\(localStatsText)"
+                        statusIsError = !(sessionsExists && sessionItemsExists && refItemsExists && localStatsExists)
                         alertTitle = "DBCheckTables"
-                        alertMessage = "sessions=\(sessionsText)\nsession_items=\(sessionItemsText)\nref_items=\(refItemsText)"
+                        alertMessage = "sessions=\(sessionsText)\nsession_items=\(sessionItemsText)\nref_items=\(refItemsText)\nlocal_stats=\(localStatsText)"
                         showAlert = true
                     } catch {
                         statusText = "DBCheckTables: FAILED\n\(error.localizedDescription)"

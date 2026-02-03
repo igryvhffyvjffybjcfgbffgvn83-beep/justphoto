@@ -188,6 +188,9 @@ Session items table (Step M1.14):
 Ref items table (Step M1.15):
 - `DatabaseMigratorFactory` registers migration `v4_ref_items` which creates the `ref_items` table.
 
+Local stats table (Step M1.16):
+- `DatabaseMigratorFactory` registers migration `v5_local_stats` which creates the `local_stats` table.
+
 ## Core Data Model (Local)
 
 SQLite (GRDB):

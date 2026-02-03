@@ -48,6 +48,14 @@ enum DatabaseMigratorFactory {
             }
         }
 
+        migrator.registerMigration("v5_local_stats") { db in
+            try db.create(table: "local_stats", ifNotExists: true) { t in
+                t.column("key", .text).primaryKey()
+                t.column("value", .text).notNull()
+                t.column("updated_at_ms", .integer).notNull()
+            }
+        }
+
         return migrator
     }
 }
