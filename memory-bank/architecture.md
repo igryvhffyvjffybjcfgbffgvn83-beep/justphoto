@@ -197,6 +197,9 @@ Session repository (Step M1.17):
 Session TTL (Step M1.18):
 - `SessionRepository.ensureFreshSession(...)` clears and recreates the session when `now - lastActiveAt > 12h`.
 
+Immediate flush (Step M1.19):
+- `DatabaseManager.flush(reason:)` checkpoints WAL on backgrounding and after `write_failed` inserts to minimize data loss on app kill.
+
 ## Core Data Model (Local)
 
 SQLite (GRDB):

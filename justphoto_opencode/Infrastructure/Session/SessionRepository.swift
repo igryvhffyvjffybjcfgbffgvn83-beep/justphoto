@@ -28,6 +28,15 @@ final class SessionRepository {
         nowMs - lastActiveAtMs > ttlMs
     }
 
+    private func nextShotSeq(db: Database, sessionId: String) throws -> Int {
+        let last = try Int.fetchOne(
+            db,
+            sql: "SELECT MAX(shot_seq) FROM session_items WHERE session_id = ?",
+            arguments: [sessionId]
+        )
+        return (last ?? 0) + 1
+    }
+
     func currentSessionId() throws -> String? {
         let q = try queue()
         return try q.read { db in
@@ -191,6 +200,42 @@ final class SessionRepository {
                 """,
                 arguments: [UUID().uuidString, id, nowMs, "debug_asset_id", false, "{}"]
             )
+        }
+    }
+
+    @discardableResult
+    func insertWriteFailedItemAndFlush(now: Date = .init()) throws -> String {
+        let q = try queue()
+        guard let id = try currentSessionId() else {
+            throw SessionRepositoryError.databaseNotReady
+        }
+        let nowMs = Self.nowMs(now)
+        let itemId = UUID().uuidString
+
+        try q.write { db in
+            let shotSeq = try nextShotSeq(db: db, sessionId: id)
+            try db.execute(
+                sql: """
+                INSERT INTO session_items (item_id, session_id, shot_seq, created_at_ms, state, liked, last_error_at_ms)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                arguments: [itemId, id, shotSeq, nowMs, "write_failed", false, nowMs]
+            )
+        }
+
+        DatabaseManager.shared.flush(reason: "write_failed")
+        return itemId
+    }
+
+    func countWriteFailedItems() throws -> Int {
+        let q = try queue()
+        guard let id = try currentSessionId() else { return 0 }
+        return try q.read { db in
+            (try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM session_items WHERE session_id = ? AND state = ?",
+                arguments: [id, "write_failed"]
+            )) ?? 0
         }
     }
 }

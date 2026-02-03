@@ -41,12 +41,18 @@ struct justphoto_opencodeApp: App {
         WindowGroup {
             ContentView()
                 .onChange(of: scenePhase) { _, phase in
-                    guard phase == .active else { return }
-                    do {
-                        _ = try SessionRepository.shared.ensureFreshSession(scene: "cafe")
-                        try SessionRepository.shared.touchCurrentSession()
-                    } catch {
-                        print("SessionEnsureFAILED: \(error)")
+                    switch phase {
+                    case .active:
+                        do {
+                            _ = try SessionRepository.shared.ensureFreshSession(scene: "cafe")
+                            try SessionRepository.shared.touchCurrentSession()
+                        } catch {
+                            print("SessionEnsureFAILED: \(error)")
+                        }
+                    case .inactive, .background:
+                        DatabaseManager.shared.flush(reason: "scenePhase_\(String(describing: phase))")
+                    @unknown default:
+                        break
                     }
                 }
         }

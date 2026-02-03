@@ -190,6 +190,46 @@ struct DebugToolsScreen: View {
                     }
                 }
 
+                Button("CreateWriteFailedItem") {
+                    do {
+                        let itemId = try SessionRepository.shared.insertWriteFailedItemAndFlush()
+                        let count = try SessionRepository.shared.countWriteFailedItems()
+                        print("WriteFailedItemCreated:\(itemId)")
+                        print("WriteFailedItemCount:\(count)")
+
+                        statusText = "CreateWriteFailedItem: OK\n\nitem_id=\(itemId)\ncount=\(count)"
+                        statusIsError = false
+                        alertTitle = "write_failed inserted"
+                        alertMessage = "item_id=\(itemId)\ncount=\(count)"
+                        showAlert = true
+                    } catch {
+                        statusText = "CreateWriteFailedItem: FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "CreateWriteFailedItem failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
+                Button("CountWriteFailedItems") {
+                    do {
+                        let count = try SessionRepository.shared.countWriteFailedItems()
+                        print("WriteFailedItemCount:\(count)")
+
+                        statusText = "WriteFailedItemCount:\n\(count)"
+                        statusIsError = false
+                        alertTitle = "write_failed count"
+                        alertMessage = String(count)
+                        showAlert = true
+                    } catch {
+                        statusText = "CountWriteFailedItems: FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "CountWriteFailedItems failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
                 Button("SpamDiagnostics") {
                     guard !isRunning else { return }
                     isRunning = true

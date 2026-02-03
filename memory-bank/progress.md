@@ -39,7 +39,7 @@ Rule: Each checkpoint is either `[ ]` (not done) or `[x]` (done). Update immedia
 - [x] M1.16 Create tables (local_stats)
 - [x] M1.17 Create SessionRepository (single read/write gateway)
 - [x] M1.18 Implement session TTL = 12h (B.3.4)
-- [ ] M1.19 Implement immediate flush on critical moments (B.3.1)
+- [x] M1.19 Implement immediate flush on critical moments (B.3.1)
 
 ## Milestone 2 — Prompt System (L1/L2/L3 + Mutual Exclusion + VoiceOver Timings + Local prompt logs)
 

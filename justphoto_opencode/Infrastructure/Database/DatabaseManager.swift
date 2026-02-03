@@ -55,4 +55,18 @@ final class DatabaseManager {
             newMigrations: newMigrations
         )
     }
+
+    func flush(reason: String) {
+        guard let q = dbQueue else { return }
+        do {
+            try q.write { db in
+                // Ensure any pending WAL frames are checkpointed to the main db file.
+                // This is the "flush" used for M1.19 (backgrounding, write_failed).
+                try db.execute(sql: "PRAGMA wal_checkpoint(TRUNCATE)")
+            }
+            print("DBFlushed: \(reason)")
+        } catch {
+            print("DBFlushFAILED: \(reason) error=\(error)")
+        }
+    }
 }
