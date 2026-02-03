@@ -20,6 +20,56 @@ struct DebugToolsScreen: View {
                     print("DebugToolsPing")
                 }
 
+                Button("PromptModelSmokeTest") {
+                    let p = Prompt(
+                        key: "debug_test",
+                        level: .L3,
+                        surface: .sheetModalCenter,
+                        priority: 1,
+                        blocksShutter: false,
+                        isClosable: false,
+                        autoDismissSeconds: nil,
+                        gate: .none,
+                        title: "Test Title",
+                        message: "Test message",
+                        primaryActionId: "dismiss",
+                        primaryTitle: "OK",
+                        secondaryActionId: nil,
+                        secondaryTitle: nil,
+                        tertiaryActionId: nil,
+                        tertiaryTitle: nil,
+                        throttle: .init(
+                            perKeyMinIntervalSec: 0,
+                            globalWindowSec: 0,
+                            globalMaxCountInWindow: 0,
+                            suppressAfterDismissSec: 0
+                        ),
+                        payload: [
+                            "count": .int(1),
+                            "scene": .string("cafe")
+                        ],
+                        emittedAt: Date()
+                    )
+
+                    do {
+                        let data = try JSONEncoder().encode(p)
+                        let json = String(data: data, encoding: .utf8) ?? "<utf8 failed>"
+                        print("PromptModelSmokeTest: \(json)")
+                        statusText = "PromptModelSmokeTest: OK\n\n\(json)"
+                        statusIsError = false
+                        alertTitle = "Prompt model"
+                        alertMessage = "Encoded OK"
+                        showAlert = true
+                    } catch {
+                        print("PromptModelSmokeTestFAILED: \(error)")
+                        statusText = "PromptModelSmokeTest: FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "Prompt model failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
                 Button("PrintDiagnosticsPath") {
                     do {
                         let logger = DiagnosticsLogger()

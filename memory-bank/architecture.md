@@ -200,6 +200,9 @@ Session TTL (Step M1.18):
 Immediate flush (Step M1.19):
 - `DatabaseManager.flush(reason:)` checkpoints WAL on backgrounding and after `write_failed` inserts to minimize data loss on app kill.
 
+Prompt model (Step M2.1):
+- `justphoto_opencode/Infrastructure/Prompt/Prompt.swift` defines the Prompt data model (levels, surfaces, throttle, payload) aligned with PRD Appendix A.
+
 ## Core Data Model (Local)
 
 SQLite (GRDB):
