@@ -136,6 +136,108 @@ struct DebugToolsScreen: View {
                 }
                 .disabled(isRunning)
 
+                Section("A.13 Required Events") {
+                    Button("WriteA13 withref_match_state") {
+                        guard !isRunning else { return }
+                        isRunning = true
+                        statusText = "WriteA13 withref_match_state: running..."
+                        statusIsError = false
+
+                        Task {
+                            let result = writeA13_withrefMatchState()
+                            await MainActor.run {
+                                isRunning = false
+                                statusText = result.statusText
+                                statusIsError = !result.ok
+                                alertTitle = result.ok ? "A.13 event written" : "A.13 event failed"
+                                alertMessage = result.alertMessage
+                                showAlert = true
+                            }
+                        }
+                    }
+                    .disabled(isRunning)
+
+                    Button("WriteA13 withref_fallback") {
+                        guard !isRunning else { return }
+                        isRunning = true
+                        statusText = "WriteA13 withref_fallback: running..."
+                        statusIsError = false
+
+                        Task {
+                            let result = writeA13_withrefFallback()
+                            await MainActor.run {
+                                isRunning = false
+                                statusText = result.statusText
+                                statusIsError = !result.ok
+                                alertTitle = result.ok ? "A.13 event written" : "A.13 event failed"
+                                alertMessage = result.alertMessage
+                                showAlert = true
+                            }
+                        }
+                    }
+                    .disabled(isRunning)
+
+                    Button("WriteA13 photo_write_verification") {
+                        guard !isRunning else { return }
+                        isRunning = true
+                        statusText = "WriteA13 photo_write_verification: running..."
+                        statusIsError = false
+
+                        Task {
+                            let result = writeA13_photoWriteVerification()
+                            await MainActor.run {
+                                isRunning = false
+                                statusText = result.statusText
+                                statusIsError = !result.ok
+                                alertTitle = result.ok ? "A.13 event written" : "A.13 event failed"
+                                alertMessage = result.alertMessage
+                                showAlert = true
+                            }
+                        }
+                    }
+                    .disabled(isRunning)
+
+                    Button("WriteA13 phantom_asset_detected") {
+                        guard !isRunning else { return }
+                        isRunning = true
+                        statusText = "WriteA13 phantom_asset_detected: running..."
+                        statusIsError = false
+
+                        Task {
+                            let result = writeA13_phantomAssetDetected()
+                            await MainActor.run {
+                                isRunning = false
+                                statusText = result.statusText
+                                statusIsError = !result.ok
+                                alertTitle = result.ok ? "A.13 event written" : "A.13 event failed"
+                                alertMessage = result.alertMessage
+                                showAlert = true
+                            }
+                        }
+                    }
+                    .disabled(isRunning)
+
+                    Button("WriteA13 odr_auto_retry") {
+                        guard !isRunning else { return }
+                        isRunning = true
+                        statusText = "WriteA13 odr_auto_retry: running..."
+                        statusIsError = false
+
+                        Task {
+                            let result = writeA13_odrAutoRetry()
+                            await MainActor.run {
+                                isRunning = false
+                                statusText = result.statusText
+                                statusIsError = !result.ok
+                                alertTitle = result.ok ? "A.13 event written" : "A.13 event failed"
+                                alertMessage = result.alertMessage
+                                showAlert = true
+                            }
+                        }
+                    }
+                    .disabled(isRunning)
+                }
+
                 if !statusText.isEmpty {
                     Text(statusText)
                         .font(.footnote)
@@ -307,6 +409,143 @@ struct DebugToolsScreen: View {
             return (
                 ok: false,
                 statusText: "RunRotationNow: FAILED\n\(error.localizedDescription)",
+                alertMessage: error.localizedDescription
+            )
+        }
+    }
+
+    private func writeA13_withrefMatchState() -> (ok: Bool, statusText: String, alertMessage: String) {
+        do {
+            let logger = DiagnosticsLogger()
+            let result = try logger.logWithRefMatchState(
+                sessionId: "dev_session",
+                scene: "cafe",
+                match: false,
+                requiredDimensions: ["centerXOffset", "centerYOffset"],
+                blockedBy: ["centerXOffset"],
+                mirrorApplied: true
+            )
+            print(result.jsonLine)
+            print("A13EventWritten: withref_match_state")
+            return (
+                ok: true,
+                statusText: "WriteA13 withref_match_state: OK\n\nfile: \(result.fileURL.path)\n\n\(result.jsonLine)",
+                alertMessage: "Appended withref_match_state to diagnostics log."
+            )
+        } catch {
+            print("A13EventWriteFAILED: withref_match_state: \(error)")
+            return (
+                ok: false,
+                statusText: "WriteA13 withref_match_state: FAILED\n\(error.localizedDescription)",
+                alertMessage: error.localizedDescription
+            )
+        }
+    }
+
+    private func writeA13_withrefFallback() -> (ok: Bool, statusText: String, alertMessage: String) {
+        do {
+            let logger = DiagnosticsLogger()
+            let result = try logger.logWithRefFallback(
+                sessionId: "dev_session",
+                scene: "cafe",
+                reason: "missing_eyeROI",
+                missing: ["eyeROI"]
+            )
+            print(result.jsonLine)
+            print("A13EventWritten: withref_fallback")
+            return (
+                ok: true,
+                statusText: "WriteA13 withref_fallback: OK\n\nfile: \(result.fileURL.path)\n\n\(result.jsonLine)",
+                alertMessage: "Appended withref_fallback to diagnostics log."
+            )
+        } catch {
+            print("A13EventWriteFAILED: withref_fallback: \(error)")
+            return (
+                ok: false,
+                statusText: "WriteA13 withref_fallback: FAILED\n\(error.localizedDescription)",
+                alertMessage: error.localizedDescription
+            )
+        }
+    }
+
+    private func writeA13_photoWriteVerification() -> (ok: Bool, statusText: String, alertMessage: String) {
+        do {
+            let logger = DiagnosticsLogger()
+            let result = try logger.logPhotoWriteVerification(
+                sessionId: "dev_session",
+                scene: "cafe",
+                assetId: "debug_asset_id",
+                firstFetchMs: 12,
+                retryUsed: true,
+                retryDelayMs: 500,
+                verifiedWithin2s: true
+            )
+            print(result.jsonLine)
+            print("A13EventWritten: photo_write_verification")
+            return (
+                ok: true,
+                statusText: "WriteA13 photo_write_verification: OK\n\nfile: \(result.fileURL.path)\n\n\(result.jsonLine)",
+                alertMessage: "Appended photo_write_verification to diagnostics log."
+            )
+        } catch {
+            print("A13EventWriteFAILED: photo_write_verification: \(error)")
+            return (
+                ok: false,
+                statusText: "WriteA13 photo_write_verification: FAILED\n\(error.localizedDescription)",
+                alertMessage: error.localizedDescription
+            )
+        }
+    }
+
+    private func writeA13_phantomAssetDetected() -> (ok: Bool, statusText: String, alertMessage: String) {
+        do {
+            let logger = DiagnosticsLogger()
+            let result = try logger.logPhantomAssetDetected(
+                sessionId: "dev_session",
+                scene: "cafe",
+                assetIdHash: "debug_hash",
+                authSnapshot: "limited",
+                healAction: "pruned"
+            )
+            print(result.jsonLine)
+            print("A13EventWritten: phantom_asset_detected")
+            return (
+                ok: true,
+                statusText: "WriteA13 phantom_asset_detected: OK\n\nfile: \(result.fileURL.path)\n\n\(result.jsonLine)",
+                alertMessage: "Appended phantom_asset_detected to diagnostics log."
+            )
+        } catch {
+            print("A13EventWriteFAILED: phantom_asset_detected: \(error)")
+            return (
+                ok: false,
+                statusText: "WriteA13 phantom_asset_detected: FAILED\n\(error.localizedDescription)",
+                alertMessage: error.localizedDescription
+            )
+        }
+    }
+
+    private func writeA13_odrAutoRetry() -> (ok: Bool, statusText: String, alertMessage: String) {
+        do {
+            let logger = DiagnosticsLogger()
+            let result = try logger.logODRAutoRetry(
+                sessionId: "dev_session",
+                scene: "cafe",
+                stateBefore: "failed_retry",
+                debounceMs: 500,
+                result: "success"
+            )
+            print(result.jsonLine)
+            print("A13EventWritten: odr_auto_retry")
+            return (
+                ok: true,
+                statusText: "WriteA13 odr_auto_retry: OK\n\nfile: \(result.fileURL.path)\n\n\(result.jsonLine)",
+                alertMessage: "Appended odr_auto_retry to diagnostics log."
+            )
+        } catch {
+            print("A13EventWriteFAILED: odr_auto_retry: \(error)")
+            return (
+                ok: false,
+                statusText: "WriteA13 odr_auto_retry: FAILED\n\(error.localizedDescription)",
                 alertMessage: error.localizedDescription
             )
         }
