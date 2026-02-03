@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		B1A9F0A12F40111100AA11A1 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = B1A9F0A22F40111100AA11A2 /* GRDB */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		B182BEAD2F3072C000BC21A5 /* justphoto_opencode.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = justphoto_opencode.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +27,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B1A9F0A12F40111100AA11A1 /* GRDB in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +70,7 @@
 			);
 			name = justphoto_opencode;
 			packageProductDependencies = (
+				B1A9F0A22F40111100AA11A2 /* GRDB */,
 			);
 			productName = justphoto_opencode;
 			productReference = B182BEAD2F3072C000BC21A5 /* justphoto_opencode.app */;
@@ -94,6 +100,9 @@
 			);
 			mainGroup = B182BEA42F3072C000BC21A5;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				B1A9F0A32F40111100AA11A3 /* GRDB.swift */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = B182BEAE2F3072C000BC21A5 /* Products */;
 			projectDirPath = "";
@@ -340,6 +349,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		B1A9F0A32F40111100AA11A3 /* GRDB.swift */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/groue/GRDB.swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 6.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B1A9F0A22F40111100AA11A2 /* GRDB */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B1A9F0A32F40111100AA11A3 /* GRDB.swift */;
+			productName = GRDB;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = B182BEA52F3072C000BC21A5 /* Project object */;
 }

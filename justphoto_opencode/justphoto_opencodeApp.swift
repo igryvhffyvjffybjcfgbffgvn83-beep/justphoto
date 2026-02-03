@@ -6,9 +6,14 @@
 //
 
 import SwiftUI
+import GRDB
 
 @main
 struct justphoto_opencodeApp: App {
+    init() {
+        print("GRDBReady")
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()

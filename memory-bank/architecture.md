@@ -32,6 +32,7 @@ The app is a single-device, offline-first iOS app with these major subsystems:
 Project-level configuration notes:
 - This project uses Xcode-generated Info.plist (`GENERATE_INFOPLIST_FILE=YES`). Privacy strings are set via build settings `INFOPLIST_KEY_*` in `justphoto_opencode.xcodeproj/project.pbxproj`.
 - Step M0.4 adds the required usage descriptions: Camera, Photo Library (read), Photo Library (add).
+- Swift Package dependencies are locked by Xcode SwiftPM in `justphoto_opencode.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved` (ensures reproducible dependency versions).
 
 4) Session System (Business Session; not AVCaptureSession)
 - A “Session” is a local workset (max 20) that drives filmstrip/viewer/wrap.
