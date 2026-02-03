@@ -73,17 +73,21 @@ struct DebugToolsScreen: View {
                             throw NSError(domain: "Database", code: 1, userInfo: [NSLocalizedDescriptionKey: "DB not ready"])
                         }
 
-                        let sessionsExists = try queue.read { db in
-                            try db.tableExists("sessions")
+                        let (sessionsExists, sessionItemsExists) = try queue.read { db in
+                            (
+                                try db.tableExists("sessions"),
+                                try db.tableExists("session_items")
+                            )
                         }
 
-                        let text = sessionsExists ? "true" : "false"
-                        print("DBCheckTables: sessions=\(text)")
+                        let sessionsText = sessionsExists ? "true" : "false"
+                        let sessionItemsText = sessionItemsExists ? "true" : "false"
+                        print("DBCheckTables: sessions=\(sessionsText) session_items=\(sessionItemsText)")
 
-                        statusText = "DBCheckTables\n\nsessions=\(text)"
-                        statusIsError = !sessionsExists
+                        statusText = "DBCheckTables\n\nsessions=\(sessionsText)\nsession_items=\(sessionItemsText)"
+                        statusIsError = !(sessionsExists && sessionItemsExists)
                         alertTitle = "DBCheckTables"
-                        alertMessage = "sessions=\(text)"
+                        alertMessage = "sessions=\(sessionsText)\nsession_items=\(sessionItemsText)"
                         showAlert = true
                     } catch {
                         statusText = "DBCheckTables: FAILED\n\(error.localizedDescription)"

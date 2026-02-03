@@ -22,6 +22,21 @@ enum DatabaseMigratorFactory {
             }
         }
 
+        migrator.registerMigration("v3_session_items") { db in
+            try db.create(table: "session_items", ifNotExists: true) { t in
+                t.column("item_id", .text).primaryKey()
+                t.column("session_id", .text).notNull().indexed()
+                t.column("shot_seq", .integer).notNull()
+                t.column("created_at_ms", .integer).notNull()
+                t.column("state", .text).notNull()
+                t.column("liked", .boolean).notNull().defaults(to: false)
+                t.column("asset_id", .text)
+                t.column("pending_file_rel_path", .text)
+                t.column("thumb_cache_rel_path", .text)
+                t.column("last_error_at_ms", .integer)
+            }
+        }
+
         return migrator
     }
 }

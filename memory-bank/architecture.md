@@ -182,6 +182,9 @@ Migration framework (Step M1.12):
 Sessions table (Step M1.13):
 - `DatabaseMigratorFactory` registers migration `v2_sessions` which creates the `sessions` table.
 
+Session items table (Step M1.14):
+- `DatabaseMigratorFactory` registers migration `v3_session_items` which creates the `session_items` table.
+
 ## Core Data Model (Local)
 
 SQLite (GRDB):
