@@ -17,10 +17,12 @@ struct justphoto_opencodeApp: App {
             let result = try DatabaseManager.shared.start()
             print("DBOpened: \(result.path) existed_before=\(result.existedBefore) exists_after=\(result.existsAfter)")
 
-            if result.migratedV1 {
-                print("DBMigrated:v1")
-            } else {
+            if result.newMigrations.isEmpty {
                 print("DBMigrationsUpToDate")
+            } else {
+                for id in result.newMigrations {
+                    print("DBMigrated:\(id)")
+                }
             }
         } catch {
             print("DBOpenFAILED: \(error)")

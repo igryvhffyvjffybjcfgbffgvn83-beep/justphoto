@@ -33,7 +33,7 @@ Rule: Each checkpoint is either `[ ]` (not done) or `[x]` (done). Update immedia
 
 ### 1C. SessionStore (PRD Appendix B) minimal persistence + TTL
 
-- [ ] M1.13 Create tables (sessions)
+ - [x] M1.13 Create tables (sessions)
 - [ ] M1.14 Create tables (session_items)
 - [ ] M1.15 Create tables (ref_items)
 - [ ] M1.16 Create tables (local_stats)

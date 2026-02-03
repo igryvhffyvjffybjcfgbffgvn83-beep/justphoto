@@ -19,14 +19,14 @@ final class DatabaseManager {
     }
 
     @discardableResult
-    func start() throws -> (path: String, existedBefore: Bool, existsAfter: Bool, migratedV1: Bool) {
-        if let dbQueue {
+    func start() throws -> (path: String, existedBefore: Bool, existsAfter: Bool, newMigrations: [String]) {
+        if dbQueue != nil {
             let url = try DatabasePaths.databaseFileURL()
             return (
                 path: url.path,
                 existedBefore: FileManager.default.fileExists(atPath: url.path),
                 existsAfter: true,
-                migratedV1: false
+                newMigrations: []
             )
         }
 
@@ -44,7 +44,7 @@ final class DatabaseManager {
         let migrator = DatabaseMigratorFactory.makeMigrator()
         try migrator.migrate(queue)
         let after = try appliedMigrations(queue)
-        let migratedV1 = !before.contains("v1") && after.contains("v1")
+        let newMigrations = Array(after.subtracting(before)).sorted()
 
         self.dbQueue = queue
         let existsAfter = FileManager.default.fileExists(atPath: url.path)
@@ -52,7 +52,7 @@ final class DatabaseManager {
             path: url.path,
             existedBefore: existedBefore,
             existsAfter: existsAfter,
-            migratedV1: migratedV1
+            newMigrations: newMigrations
         )
     }
 }

@@ -179,6 +179,9 @@ Database file creation (Step M1.11):
 Migration framework (Step M1.12):
 - `DatabaseManager` runs migrations on startup and prints `DBMigrated:v1` on first apply, then `DBMigrationsUpToDate` on subsequent launches.
 
+Sessions table (Step M1.13):
+- `DatabaseMigratorFactory` registers migration `v2_sessions` which creates the `sessions` table.
+
 ## Core Data Model (Local)
 
 SQLite (GRDB):

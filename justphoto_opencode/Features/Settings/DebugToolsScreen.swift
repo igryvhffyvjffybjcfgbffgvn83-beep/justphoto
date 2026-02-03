@@ -2,6 +2,7 @@
 
 import Foundation
 import SwiftUI
+import GRDB
 
 struct DebugToolsScreen: View {
     @State private var statusText: String = ""
@@ -61,6 +62,33 @@ struct DebugToolsScreen: View {
                         statusText = "PrintDBPath: FAILED\n\(error.localizedDescription)"
                         statusIsError = true
                         alertTitle = "DB path failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
+                Button("DBCheckTables") {
+                    do {
+                        guard let queue = DatabaseManager.shared.dbQueue else {
+                            throw NSError(domain: "Database", code: 1, userInfo: [NSLocalizedDescriptionKey: "DB not ready"])
+                        }
+
+                        let sessionsExists = try queue.read { db in
+                            try db.tableExists("sessions")
+                        }
+
+                        let text = sessionsExists ? "true" : "false"
+                        print("DBCheckTables: sessions=\(text)")
+
+                        statusText = "DBCheckTables\n\nsessions=\(text)"
+                        statusIsError = !sessionsExists
+                        alertTitle = "DBCheckTables"
+                        alertMessage = "sessions=\(text)"
+                        showAlert = true
+                    } catch {
+                        statusText = "DBCheckTables: FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "DBCheckTables failed"
                         alertMessage = error.localizedDescription
                         showAlert = true
                     }

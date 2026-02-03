@@ -12,6 +12,16 @@ enum DatabaseMigratorFactory {
             }
         }
 
+        migrator.registerMigration("v2_sessions") { db in
+            try db.create(table: "sessions", ifNotExists: true) { t in
+                t.column("session_id", .text).primaryKey()
+                t.column("created_at_ms", .integer).notNull()
+                t.column("last_active_at_ms", .integer).notNull()
+                t.column("scene", .text).notNull()
+                t.column("flags_json", .text).notNull().defaults(to: "{}")
+            }
+        }
+
         return migrator
     }
 }
