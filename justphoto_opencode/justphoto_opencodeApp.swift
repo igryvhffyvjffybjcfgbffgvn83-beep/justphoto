@@ -11,6 +11,7 @@ import GRDB
 @main
 struct justphoto_opencodeApp: App {
     @Environment(\.scenePhase) private var scenePhase
+    @StateObject private var promptCenter = PromptCenter()
 
     init() {
         print("GRDBReady")
@@ -40,6 +41,7 @@ struct justphoto_opencodeApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(promptCenter)
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {
                     case .active:

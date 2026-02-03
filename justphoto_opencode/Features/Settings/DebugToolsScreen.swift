@@ -5,6 +5,8 @@ import SwiftUI
 import GRDB
 
 struct DebugToolsScreen: View {
+    @EnvironmentObject private var promptCenter: PromptCenter
+
     @State private var statusText: String = ""
     @State private var statusIsError: Bool = false
     @State private var isRunning: Bool = false
@@ -12,6 +14,17 @@ struct DebugToolsScreen: View {
     @State private var showAlert: Bool = false
     @State private var alertTitle: String = ""
     @State private var alertMessage: String = ""
+
+    private var modalPromptBinding: Binding<Prompt?> {
+        Binding(
+            get: { promptCenter.modal },
+            set: { newValue in
+                if newValue == nil {
+                    promptCenter.dismissModal(reason: .close)
+                }
+            }
+        )
+    }
 
     var body: some View {
         List {
@@ -68,6 +81,14 @@ struct DebugToolsScreen: View {
                         alertMessage = error.localizedDescription
                         showAlert = true
                     }
+                }
+
+                Button("ShowTestL3A") {
+                    promptCenter.show(makeTestL3Prompt(key: "A", title: "Test A"))
+                }
+
+                Button("ShowTestL3B") {
+                    promptCenter.show(makeTestL3Prompt(key: "B", title: "Test B"))
                 }
 
                 Button("PrintDiagnosticsPath") {
@@ -483,6 +504,10 @@ struct DebugToolsScreen: View {
             }
         }
         .navigationTitle("Debug Tools")
+        .sheet(item: modalPromptBinding) { prompt in
+            PromptDebugModal(prompt: prompt)
+                .interactiveDismissDisabled(true)
+        }
         .alert(alertTitle, isPresented: $showAlert) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -782,6 +807,95 @@ struct DebugToolsScreen: View {
                 alertMessage: error.localizedDescription
             )
         }
+    }
+
+    private func makeTestL3Prompt(key: String, title: String) -> Prompt {
+        Prompt(
+            key: key,
+            level: .L3,
+            surface: .sheetModalCenter,
+            priority: 80,
+            blocksShutter: false,
+            isClosable: false,
+            autoDismissSeconds: nil,
+            gate: .none,
+            title: title,
+            message: "This is a test modal (\(key)).",
+            primaryActionId: "primary",
+            primaryTitle: "OK",
+            secondaryActionId: "secondary",
+            secondaryTitle: "Cancel",
+            tertiaryActionId: nil,
+            tertiaryTitle: nil,
+            throttle: .init(
+                perKeyMinIntervalSec: 0,
+                globalWindowSec: 0,
+                globalMaxCountInWindow: 0,
+                suppressAfterDismissSec: 0
+            ),
+            payload: [:],
+            emittedAt: Date()
+        )
+    }
+}
+
+private struct PromptDebugModal: View {
+    @EnvironmentObject private var promptCenter: PromptCenter
+    let prompt: Prompt
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(prompt.title ?? "")
+                .font(.headline)
+
+            Text(prompt.message)
+                .font(.body)
+
+            if prompt.key == "A" {
+                Button("Preempt to Test B") {
+                    promptCenter.show(
+                        Prompt(
+                            key: "B",
+                            level: .L3,
+                            surface: .sheetModalCenter,
+                            priority: 80,
+                            blocksShutter: false,
+                            isClosable: false,
+                            autoDismissSeconds: nil,
+                            gate: .none,
+                            title: "Test B",
+                            message: "This is a test modal (B).",
+                            primaryActionId: "primary",
+                            primaryTitle: "OK",
+                            secondaryActionId: "secondary",
+                            secondaryTitle: "Cancel",
+                            tertiaryActionId: nil,
+                            tertiaryTitle: nil,
+                            throttle: .init(
+                                perKeyMinIntervalSec: 0,
+                                globalWindowSec: 0,
+                                globalMaxCountInWindow: 0,
+                                suppressAfterDismissSec: 0
+                            ),
+                            payload: [:],
+                            emittedAt: Date()
+                        )
+                    )
+                }
+                .buttonStyle(.bordered)
+            }
+
+            Spacer(minLength: 0)
+
+            ForEach(prompt.actions) { action in
+                Button(action.title) {
+                    print("PromptActionTapped:\(prompt.key) action=\(action.id)")
+                    promptCenter.dismissModal(reason: .action)
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(20)
     }
 }
 

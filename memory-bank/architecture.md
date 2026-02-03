@@ -203,6 +203,9 @@ Immediate flush (Step M1.19):
 Prompt model (Step M2.1):
 - `justphoto_opencode/Infrastructure/Prompt/Prompt.swift` defines the Prompt data model (levels, surfaces, throttle, payload) aligned with PRD Appendix A.
 
+Prompt center (Step M2.2):
+- `justphoto_opencode/Infrastructure/Prompt/PromptCenter.swift` owns the active toast/banner/modal slots and handles L3 preemption (`PromptPreempted:A->B`).
+
 ## Core Data Model (Local)
 
 SQLite (GRDB):

@@ -44,7 +44,7 @@ Rule: Each checkpoint is either `[ ]` (not done) or `[x]` (done). Update immedia
 ## Milestone 2 — Prompt System (L1/L2/L3 + Mutual Exclusion + VoiceOver Timings + Local prompt logs)
 
 - [x] M2.1 Create Prompt model file
-- [ ] M2.2 Create PromptCenter (single controller)
+- [x] M2.2 Create PromptCenter (single controller)
 - [ ] M2.3 Implement L1 Toast slot
 - [ ] M2.4 Implement L2 Banner slot
 - [ ] M2.5 Implement L3 Modal slot
