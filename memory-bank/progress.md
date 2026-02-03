@@ -35,7 +35,7 @@ Rule: Each checkpoint is either `[ ]` (not done) or `[x]` (done). Update immedia
 
  - [x] M1.13 Create tables (sessions)
 - [x] M1.14 Create tables (session_items)
-- [ ] M1.15 Create tables (ref_items)
+- [x] M1.15 Create tables (ref_items)
 - [ ] M1.16 Create tables (local_stats)
 - [ ] M1.17 Create SessionRepository (single read/write gateway)
 - [ ] M1.18 Implement session TTL = 12h (B.3.4)

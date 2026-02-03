@@ -73,21 +73,23 @@ struct DebugToolsScreen: View {
                             throw NSError(domain: "Database", code: 1, userInfo: [NSLocalizedDescriptionKey: "DB not ready"])
                         }
 
-                        let (sessionsExists, sessionItemsExists) = try queue.read { db in
+                        let (sessionsExists, sessionItemsExists, refItemsExists) = try queue.read { db in
                             (
                                 try db.tableExists("sessions"),
-                                try db.tableExists("session_items")
+                                try db.tableExists("session_items"),
+                                try db.tableExists("ref_items")
                             )
                         }
 
                         let sessionsText = sessionsExists ? "true" : "false"
                         let sessionItemsText = sessionItemsExists ? "true" : "false"
-                        print("DBCheckTables: sessions=\(sessionsText) session_items=\(sessionItemsText)")
+                        let refItemsText = refItemsExists ? "true" : "false"
+                        print("DBCheckTables: sessions=\(sessionsText) session_items=\(sessionItemsText) ref_items=\(refItemsText)")
 
-                        statusText = "DBCheckTables\n\nsessions=\(sessionsText)\nsession_items=\(sessionItemsText)"
-                        statusIsError = !(sessionsExists && sessionItemsExists)
+                        statusText = "DBCheckTables\n\nsessions=\(sessionsText)\nsession_items=\(sessionItemsText)\nref_items=\(refItemsText)"
+                        statusIsError = !(sessionsExists && sessionItemsExists && refItemsExists)
                         alertTitle = "DBCheckTables"
-                        alertMessage = "sessions=\(sessionsText)\nsession_items=\(sessionItemsText)"
+                        alertMessage = "sessions=\(sessionsText)\nsession_items=\(sessionItemsText)\nref_items=\(refItemsText)"
                         showAlert = true
                     } catch {
                         statusText = "DBCheckTables: FAILED\n\(error.localizedDescription)"

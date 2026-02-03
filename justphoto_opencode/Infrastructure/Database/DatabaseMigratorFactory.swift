@@ -37,6 +37,17 @@ enum DatabaseMigratorFactory {
             }
         }
 
+        migrator.registerMigration("v4_ref_items") { db in
+            try db.create(table: "ref_items", ifNotExists: true) { t in
+                t.column("ref_id", .text).primaryKey()
+                t.column("session_id", .text).notNull().indexed()
+                t.column("created_at_ms", .integer).notNull()
+                t.column("asset_id", .text).notNull()
+                t.column("is_selected", .boolean).notNull().defaults(to: false)
+                t.column("target_outputs_json", .text).notNull().defaults(to: "{}")
+            }
+        }
+
         return migrator
     }
 }

@@ -185,6 +185,9 @@ Sessions table (Step M1.13):
 Session items table (Step M1.14):
 - `DatabaseMigratorFactory` registers migration `v3_session_items` which creates the `session_items` table.
 
+Ref items table (Step M1.15):
+- `DatabaseMigratorFactory` registers migration `v4_ref_items` which creates the `ref_items` table.
+
 ## Core Data Model (Local)
 
 SQLite (GRDB):
