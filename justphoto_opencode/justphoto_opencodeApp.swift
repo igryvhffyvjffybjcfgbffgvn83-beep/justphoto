@@ -16,6 +16,12 @@ struct justphoto_opencodeApp: App {
         do {
             let result = try DatabaseManager.shared.start()
             print("DBOpened: \(result.path) existed_before=\(result.existedBefore) exists_after=\(result.existsAfter)")
+
+            if result.migratedV1 {
+                print("DBMigrated:v1")
+            } else {
+                print("DBMigrationsUpToDate")
+            }
         } catch {
             print("DBOpenFAILED: \(error)")
         }

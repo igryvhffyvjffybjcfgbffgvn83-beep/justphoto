@@ -29,7 +29,7 @@ Rule: Each checkpoint is either `[ ]` (not done) or `[x]` (done). Update immedia
 - [x] M1.9 Add GRDB via Swift Package Manager
 - [x] M1.10 Create DB bootstrap files
 - [x] M1.11 Create DB file on first launch
-- [ ] M1.12 Add migration framework (v1)
+- [x] M1.12 Add migration framework (v1)
 
 ### 1C. SessionStore (PRD Appendix B) minimal persistence + TTL
 

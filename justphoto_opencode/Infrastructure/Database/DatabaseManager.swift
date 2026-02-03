@@ -9,14 +9,24 @@ final class DatabaseManager {
 
     private init() {}
 
+    private func appliedMigrations(_ queue: DatabaseQueue) throws -> Set<String> {
+        try queue.read { db in
+            let exists = try db.tableExists("grdb_migrations")
+            guard exists else { return [] }
+            let rows = try Row.fetchAll(db, sql: "SELECT identifier FROM grdb_migrations")
+            return Set(rows.compactMap { $0["identifier"] as String? })
+        }
+    }
+
     @discardableResult
-    func start() throws -> (path: String, existedBefore: Bool, existsAfter: Bool) {
+    func start() throws -> (path: String, existedBefore: Bool, existsAfter: Bool, migratedV1: Bool) {
         if let dbQueue {
             let url = try DatabasePaths.databaseFileURL()
             return (
                 path: url.path,
                 existedBefore: FileManager.default.fileExists(atPath: url.path),
-                existsAfter: true
+                existsAfter: true,
+                migratedV1: false
             )
         }
 
@@ -30,8 +40,19 @@ final class DatabaseManager {
             _ = try Int.fetchOne(db, sql: "SELECT 1")
         }
 
+        let before = try appliedMigrations(queue)
+        let migrator = DatabaseMigratorFactory.makeMigrator()
+        try migrator.migrate(queue)
+        let after = try appliedMigrations(queue)
+        let migratedV1 = !before.contains("v1") && after.contains("v1")
+
         self.dbQueue = queue
         let existsAfter = FileManager.default.fileExists(atPath: url.path)
-        return (path: url.path, existedBefore: existedBefore, existsAfter: existsAfter)
+        return (
+            path: url.path,
+            existedBefore: existedBefore,
+            existsAfter: existsAfter,
+            migratedV1: migratedV1
+        )
     }
 }
