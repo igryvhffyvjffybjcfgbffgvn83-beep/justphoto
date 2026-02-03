@@ -194,6 +194,9 @@ Local stats table (Step M1.16):
 Session repository (Step M1.17):
 - `justphoto_opencode/Infrastructure/Session/SessionRepository.swift` is the single read/write gateway for current session identity and lifecycle.
 
+Session TTL (Step M1.18):
+- `SessionRepository.ensureFreshSession(...)` clears and recreates the session when `now - lastActiveAt > 12h`.
+
 ## Core Data Model (Local)
 
 SQLite (GRDB):

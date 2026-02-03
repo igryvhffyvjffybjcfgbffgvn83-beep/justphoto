@@ -140,6 +140,56 @@ struct DebugToolsScreen: View {
                     }
                 }
 
+                Button("SetSessionOldLastActive") {
+                    do {
+                        // Create a fresh session, seed some rows, then force lastActiveAt to >12h ago.
+                        let id = try SessionRepository.shared.createNewSession(scene: "cafe")
+                        try SessionRepository.shared.seedWorksetForCurrentSession()
+
+                        let oldLastActiveMs = Int64((Date().timeIntervalSince1970 - (13 * 60 * 60)) * 1000)
+                        try SessionRepository.shared.setCurrentSessionLastActiveMs(oldLastActiveMs)
+
+                        let counts = try SessionRepository.shared.currentWorksetCounts()
+                        print("SetSessionOldLastActive: session_id=\(id) last_active_ms=\(oldLastActiveMs)")
+                        if let counts {
+                            print("WorksetSeeded: session_items=\(counts.sessionItems) ref_items=\(counts.refItems)")
+                        }
+
+                        statusText = "SetSessionOldLastActive: OK\n\nSessionId:\n\(id)\n\nlast_active_ms:\n\(oldLastActiveMs)"
+                        statusIsError = false
+                        alertTitle = "Session lastActive forced old"
+                        alertMessage = id
+                        showAlert = true
+                    } catch {
+                        statusText = "SetSessionOldLastActive: FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "SetSessionOldLastActive failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
+                Button("PrintWorksetCounts") {
+                    do {
+                        let counts = try SessionRepository.shared.currentWorksetCounts()
+                        let sessionItems = counts?.sessionItems ?? -1
+                        let refItems = counts?.refItems ?? -1
+                        print("WorksetCounts: session_items=\(sessionItems) ref_items=\(refItems)")
+
+                        statusText = "WorksetCounts\n\nsession_items=\(sessionItems)\nref_items=\(refItems)"
+                        statusIsError = false
+                        alertTitle = "Workset counts"
+                        alertMessage = "session_items=\(sessionItems) ref_items=\(refItems)"
+                        showAlert = true
+                    } catch {
+                        statusText = "PrintWorksetCounts: FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "PrintWorksetCounts failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
                 Button("SpamDiagnostics") {
                     guard !isRunning else { return }
                     isRunning = true

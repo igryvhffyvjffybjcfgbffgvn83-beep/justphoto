@@ -10,6 +10,8 @@ import GRDB
 
 @main
 struct justphoto_opencodeApp: App {
+    @Environment(\.scenePhase) private var scenePhase
+
     init() {
         print("GRDBReady")
 
@@ -24,6 +26,12 @@ struct justphoto_opencodeApp: App {
                     print("DBMigrated:\(id)")
                 }
             }
+
+            let session = try SessionRepository.shared.ensureFreshSession(scene: "cafe")
+            print("SessionReady: \(session.sessionId) changed=\(session.changed)")
+            if let counts = try SessionRepository.shared.currentWorksetCounts() {
+                print("WorksetCounts: session_items=\(counts.sessionItems) ref_items=\(counts.refItems)")
+            }
         } catch {
             print("DBOpenFAILED: \(error)")
         }
@@ -32,6 +40,15 @@ struct justphoto_opencodeApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .onChange(of: scenePhase) { _, phase in
+                    guard phase == .active else { return }
+                    do {
+                        _ = try SessionRepository.shared.ensureFreshSession(scene: "cafe")
+                        try SessionRepository.shared.touchCurrentSession()
+                    } catch {
+                        print("SessionEnsureFAILED: \(error)")
+                    }
+                }
         }
     }
 }
