@@ -15,17 +15,6 @@ struct DebugToolsScreen: View {
     @State private var alertTitle: String = ""
     @State private var alertMessage: String = ""
 
-    private var modalPromptBinding: Binding<Prompt?> {
-        Binding(
-            get: { promptCenter.modal },
-            set: { newValue in
-                if newValue == nil {
-                    promptCenter.dismissModal(reason: .close)
-                }
-            }
-        )
-    }
-
     var body: some View {
         List {
             Section("Debug Tools") {
@@ -81,6 +70,10 @@ struct DebugToolsScreen: View {
                         alertMessage = error.localizedDescription
                         showAlert = true
                     }
+                }
+
+                Button("ShowTestL3") {
+                    promptCenter.show(makeTestL3Prompt(key: "test_l3", title: "Test Modal"))
                 }
 
                 Button("ShowTestL3A") {
@@ -513,10 +506,6 @@ struct DebugToolsScreen: View {
         }
         .navigationTitle("Debug Tools")
         .promptHost()
-        .sheet(item: modalPromptBinding) { prompt in
-            PromptDebugModal(prompt: prompt)
-                .interactiveDismissDisabled(true)
-        }
         .alert(alertTitle, isPresented: $showAlert) {
             Button("OK", role: .cancel) {}
         } message: {

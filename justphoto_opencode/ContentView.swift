@@ -89,6 +89,138 @@ private struct PromptBannerView: View {
     }
 }
 
+private struct PromptModalView: View {
+    @EnvironmentObject private var promptCenter: PromptCenter
+    let prompt: Prompt
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    if let title = prompt.title, !title.isEmpty {
+                        Text(title)
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(.primary)
+                    }
+
+                    Text(prompt.message)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                }
+
+                Spacer(minLength: 0)
+
+                if prompt.isClosable {
+                    Button {
+                        promptCenter.dismissModal(reason: .close)
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(8)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Close")
+                }
+            }
+
+#if DEBUG
+            if prompt.key == "A" {
+                Button("Preempt to Test B") {
+                    promptCenter.show(
+                        Prompt(
+                            key: "B",
+                            level: .L3,
+                            surface: .sheetModalCenter,
+                            priority: 80,
+                            blocksShutter: false,
+                            isClosable: false,
+                            autoDismissSeconds: nil,
+                            gate: .none,
+                            title: "Test B",
+                            message: "This is a test modal (B).",
+                            primaryActionId: "primary",
+                            primaryTitle: "OK",
+                            secondaryActionId: "secondary",
+                            secondaryTitle: "Cancel",
+                            tertiaryActionId: nil,
+                            tertiaryTitle: nil,
+                            throttle: .init(
+                                perKeyMinIntervalSec: 0,
+                                globalWindowSec: 0,
+                                globalMaxCountInWindow: 0,
+                                suppressAfterDismissSec: 0
+                            ),
+                            payload: [:],
+                            emittedAt: Date()
+                        )
+                    )
+                }
+                .buttonStyle(.bordered)
+            }
+#endif
+
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(prompt.actions) { action in
+                    if action.id == prompt.primaryActionId {
+                        Button(action.title) {
+                            print("PromptActionTapped:\(prompt.key) action=\(action.id)")
+                            promptCenter.dismissModal(reason: .action)
+                        }
+                        .buttonStyle(.borderedProminent)
+                    } else {
+                        Button(action.title) {
+                            print("PromptActionTapped:\(prompt.key) action=\(action.id)")
+                            promptCenter.dismissModal(reason: .action)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+            }
+        }
+        .padding(20)
+        // Prevent the modal content from expanding to fill available height.
+        .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+private struct PromptModalOverlayView: View {
+    @EnvironmentObject private var promptCenter: PromptCenter
+    let prompt: Prompt
+
+    var body: some View {
+        GeometryReader { proxy in
+            let cardWidth = min(520, max(280, proxy.size.width - 44))
+            let center = CGPoint(x: proxy.size.width * 0.5, y: proxy.size.height * 0.5)
+
+            ZStack {
+                Color.black
+                    .opacity(0.28)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        guard prompt.isClosable else { return }
+                        promptCenter.dismissModal(reason: .close)
+                    }
+
+                PromptModalView(prompt: prompt)
+                    .frame(width: cardWidth)
+                    .background(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(Color(.systemBackground))
+                            .shadow(color: .black.opacity(0.18), radius: 24, x: 0, y: 14)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .strokeBorder(.black.opacity(0.06), lineWidth: 1)
+                    )
+                    .position(center)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .transition(.opacity)
+    }
+}
+
 private struct PromptHostOverlay: View {
     @EnvironmentObject private var promptCenter: PromptCenter
 
@@ -127,11 +259,17 @@ private struct PromptHostOverlay: View {
                     }
             }
         }
+        .overlay {
+            if let modal = promptCenter.modal {
+                PromptModalOverlayView(prompt: modal)
+            }
+        }
         // Critical: ensure the overlay fills the host view. Without this, SwiftUI may
         // size the overlay to its content and the toast can effectively render off-screen.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .animation(.spring(response: 0.28, dampingFraction: 0.9), value: promptCenter.toast?.id)
         .animation(.spring(response: 0.28, dampingFraction: 0.9), value: promptCenter.banner?.id)
+        .animation(.spring(response: 0.28, dampingFraction: 0.9), value: promptCenter.modal?.id)
     }
 }
 
