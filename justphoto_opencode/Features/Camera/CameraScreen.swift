@@ -68,10 +68,22 @@ struct CameraScreen: View {
             .padding()
             .navigationTitle("Just Photo")
         }
-        .sheet(isPresented: $showingSettings) { SettingsSheet() }
-        .sheet(isPresented: $showingPaywall) { PaywallSheet() }
-        .sheet(isPresented: $showingInspiration) { InspirationSheet() }
-        .sheet(isPresented: $showingDownReasons) { DownReasonsSheet() }
+        .sheet(isPresented: $showingSettings) {
+            SettingsSheet()
+                .environment(\.promptHostInstalled, false)
+        }
+        .sheet(isPresented: $showingPaywall) {
+            PaywallSheet()
+                .environment(\.promptHostInstalled, false)
+        }
+        .sheet(isPresented: $showingInspiration) {
+            InspirationSheet()
+                .environment(\.promptHostInstalled, false)
+        }
+        .sheet(isPresented: $showingDownReasons) {
+            DownReasonsSheet()
+                .environment(\.promptHostInstalled, false)
+        }
     }
 }
 

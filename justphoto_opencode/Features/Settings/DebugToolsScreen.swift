@@ -95,6 +95,10 @@ struct DebugToolsScreen: View {
                     promptCenter.show(makeTestL1ToastPrompt(key: "toast_test"))
                 }
 
+                Button("ShowTestBannerWithButton") {
+                    promptCenter.show(makeTestL2BannerWithButton(key: "banner_test"))
+                }
+
                 Button("PrintDiagnosticsPath") {
                     do {
                         let logger = DiagnosticsLogger()
@@ -857,6 +861,35 @@ struct DebugToolsScreen: View {
             message: "Toast: \(key)",
             primaryActionId: nil,
             primaryTitle: nil,
+            secondaryActionId: nil,
+            secondaryTitle: nil,
+            tertiaryActionId: nil,
+            tertiaryTitle: nil,
+            throttle: .init(
+                perKeyMinIntervalSec: 0,
+                globalWindowSec: 0,
+                globalMaxCountInWindow: 0,
+                suppressAfterDismissSec: 0
+            ),
+            payload: [:],
+            emittedAt: Date()
+        )
+    }
+
+    private func makeTestL2BannerWithButton(key: String) -> Prompt {
+        Prompt(
+            key: key,
+            level: .L2,
+            surface: .sheetBannerTop,
+            priority: 40,
+            blocksShutter: false,
+            isClosable: true,
+            autoDismissSeconds: nil,
+            gate: .none,
+            title: "Banner test",
+            message: "This banner stays until you tap the button or close.",
+            primaryActionId: "primary",
+            primaryTitle: "OK",
             secondaryActionId: nil,
             secondaryTitle: nil,
             tertiaryActionId: nil,

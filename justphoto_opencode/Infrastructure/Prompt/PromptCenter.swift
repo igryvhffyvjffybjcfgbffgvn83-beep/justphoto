@@ -30,6 +30,12 @@ final class PromptCenter: ObservableObject {
         toast = nil
     }
 
+    func dismissBanner(reason: DismissReason) {
+        guard let existing = banner else { return }
+        print("PromptDismissed:\(existing.key) reason=\(reason.rawValue)")
+        banner = nil
+    }
+
     private func choose(existing: Prompt?, incoming: Prompt, slot: String) -> Prompt {
         guard let existing else { return incoming }
 
