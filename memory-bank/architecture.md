@@ -173,6 +173,9 @@ Database bootstrap (Steps M1.9-M1.10):
 - `justphoto_opencode/Infrastructure/Database/DatabaseQueueFactory.swift` opens a GRDB `DatabaseQueue` for a given path.
 - `justphoto_opencode/Infrastructure/Database/DatabaseMigratorFactory.swift` provides a migrator placeholder; migrations are registered in M1.12.
 
+Database file creation (Step M1.11):
+- `justphoto_opencode/Infrastructure/Database/DatabaseManager.swift` opens the database on app launch and ensures the sqlite file exists on disk.
+
 ## Core Data Model (Local)
 
 SQLite (GRDB):
