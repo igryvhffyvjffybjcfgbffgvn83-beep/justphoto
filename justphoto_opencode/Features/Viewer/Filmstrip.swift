@@ -87,7 +87,7 @@ private struct FilmstripThumb: View {
     private var thumbImage: Image {
 #if canImport(UIKit)
         guard let rel = thumbCacheRelPath,
-              let url = try? PendingFileStore.shared.fullURL(forRelativePath: rel),
+              let url = try? ThumbCacheStore.shared.fullURL(forRelativePath: rel),
               let img = UIImage(contentsOfFile: url.path)
         else {
             return Image(systemName: "photo")
