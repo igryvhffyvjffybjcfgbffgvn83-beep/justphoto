@@ -127,7 +127,7 @@ Notes / Known limitations (track for later milestones):
 - [x] M5.2 Implement “newest first” ordering everywhere
 - [x] M5.3 Implement state badges mapping (saving / ! / normal)
 - [x] M5.4 Create ViewerContainer file (x/y, close, like)
-- [ ] M5.5 Create Zoom/Pan UIKit bridge file
+- [x] M5.5 Create Zoom/Pan UIKit bridge file
 - [ ] M5.6 Implement scale<=1.01 treated as 1 (PRD)
 - [ ] M5.7 Implement “pinch wins over swipe”
 - [ ] M5.8 Persist liked in DB (GRDB usage)

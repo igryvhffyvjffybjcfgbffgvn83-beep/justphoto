@@ -110,25 +110,74 @@ private struct ViewerPage: View {
     var body: some View {
         ZStack {
             Color.black
-            image
-                .resizable()
-                .scaledToFit()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            zoomable
         }
         .ignoresSafeArea()
     }
 
-    private var image: Image {
+    @ViewBuilder
+    private var zoomable: some View {
 #if canImport(UIKit)
-        guard let rel = item.thumbCacheRelPath,
-              let url = try? ThumbCacheStore.shared.fullURL(forRelativePath: rel),
-              let img = UIImage(contentsOfFile: url.path)
-        else {
-            return Image(systemName: "photo")
-        }
-        return Image(uiImage: img)
+        ZoomableImageScrollView(image: uiImageForViewer, imageId: item.itemId)
 #else
-        return Image(systemName: "photo")
+        Image(systemName: "photo")
 #endif
     }
+
+#if canImport(UIKit)
+    private var uiImageForViewer: UIImage {
+        guard let rel = item.thumbCacheRelPath,
+              let url = try? ThumbCacheStore.shared.fullURL(forRelativePath: rel)
+        else {
+            return Self.makeNumericPlaceholderImage(text: "\(item.shotSeq)")
+        }
+
+        if let img = UIImage(contentsOfFile: url.path) {
+            return img
+        }
+        return Self.makeNumericPlaceholderImage(text: "\(item.shotSeq)")
+    }
+
+    private static func makeNumericPlaceholderImage(text: String) -> UIImage {
+        let size = CGSize(width: 1200, height: 1200)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { ctx in
+            let r = CGRect(origin: .zero, size: size)
+            UIColor.black.setFill()
+            ctx.fill(r)
+
+            // High-contrast diagonal stripes.
+            let stripeW: CGFloat = 60
+            for i in -40..<60 {
+                let x = CGFloat(i) * stripeW
+                let path = UIBezierPath()
+                path.move(to: CGPoint(x: x, y: 0))
+                path.addLine(to: CGPoint(x: x + stripeW, y: 0))
+                path.addLine(to: CGPoint(x: x + size.width + stripeW, y: size.height))
+                path.addLine(to: CGPoint(x: x + size.width, y: size.height))
+                path.close()
+
+                let isA = i % 2 == 0
+                (isA ? UIColor.systemYellow : UIColor.systemCyan).withAlphaComponent(0.92).setFill()
+                path.fill()
+            }
+
+            // Center number.
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.alignment = .center
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 360, weight: .heavy),
+                .foregroundColor: UIColor.black,
+                .paragraphStyle: paragraph,
+            ]
+
+            let s = NSAttributedString(string: text, attributes: attrs)
+            let box = CGRect(x: 0, y: (size.height - 420) / 2, width: size.width, height: 420)
+
+            UIColor.white.withAlphaComponent(0.88).setFill()
+            UIBezierPath(roundedRect: box.insetBy(dx: 180, dy: 40), cornerRadius: 90).fill()
+            s.draw(in: box)
+        }
+    }
+#endif
 }
