@@ -4,6 +4,68 @@ import SwiftUI
 import UIKit
 #endif
 
+#if canImport(UIKit)
+// Best-effort control of the paging scroll used by `TabView(.page)`.
+private struct PagingScrollGateView: UIViewRepresentable {
+    let isPagingEnabled: Bool
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.isUserInteractionEnabled = false
+        context.coordinator.hostView = view
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.hostView = uiView
+        context.coordinator.setPagingEnabled(isPagingEnabled)
+    }
+
+    final class Coordinator {
+        fileprivate weak var hostView: UIView?
+        private weak var pagingScrollView: UIScrollView?
+        private var lastApplied: Bool?
+
+        func setPagingEnabled(_ enabled: Bool) {
+            if lastApplied == enabled { return }
+            lastApplied = enabled
+
+            // `TabView(.page)` hierarchy can be created lazily; apply on next runloop.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let hostView = self.hostView else { return }
+                let scrollView = self.pagingScrollView ?? Self.findPagingScrollView(startingAt: hostView)
+                self.pagingScrollView = scrollView
+                scrollView?.isScrollEnabled = enabled
+            }
+        }
+
+        private static func findPagingScrollView(startingAt view: UIView) -> UIScrollView? {
+            var current: UIView? = view
+            while let c = current {
+                if let scroll = c as? UIScrollView, scroll.isPagingEnabled {
+                    return scroll
+                }
+                current = c.superview
+            }
+            return nil
+        }
+    }
+}
+#else
+private struct PagingScrollGateView: View {
+    let isPagingEnabled: Bool
+
+    var body: some View {
+        _ = isPagingEnabled
+        return EmptyView()
+    }
+}
+#endif
+
 // M5.4: Viewer shell (index + close + like placeholder).
 struct ViewerContainer: View {
     @Environment(\.dismiss) private var dismiss
@@ -104,13 +166,24 @@ struct ViewerContainer: View {
     }
 }
 
+private enum ViewerZoomRules {
+    // M5.6: treat small zoom as 1.0 for swipe enabling.
+    static let scaleAsOneThreshold: CGFloat = 1.01
+}
+
 private struct ViewerPage: View {
     let item: SessionRepository.SessionItemSummary
+
+    @State private var zoomScale: CGFloat = 1.0
 
     var body: some View {
         ZStack {
             Color.black
             zoomable
+
+            // Disable page swiping while zoomed-in (but allow slight zoom to still swipe).
+            PagingScrollGateView(isPagingEnabled: zoomScale <= ViewerZoomRules.scaleAsOneThreshold)
+                .frame(width: 0, height: 0)
         }
         .ignoresSafeArea()
     }
@@ -118,7 +191,7 @@ private struct ViewerPage: View {
     @ViewBuilder
     private var zoomable: some View {
 #if canImport(UIKit)
-        ZoomableImageScrollView(image: uiImageForViewer, imageId: item.itemId)
+        ZoomableImageScrollView(image: uiImageForViewer, imageId: item.itemId, zoomScale: $zoomScale)
 #else
         Image(systemName: "photo")
 #endif

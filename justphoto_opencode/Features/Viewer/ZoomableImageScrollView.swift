@@ -8,6 +8,8 @@ struct ZoomableImageScrollView: UIViewRepresentable {
     let image: UIImage?
     let imageId: String
 
+    @Binding var zoomScale: CGFloat
+
     var minimumZoomScale: CGFloat = 1.0
     var maximumZoomScale: CGFloat = 4.0
 
@@ -47,26 +49,42 @@ struct ZoomableImageScrollView: UIViewRepresentable {
 
         context.coordinator.imageView = imageView
         context.coordinator.lastImageId = imageId
+        context.coordinator.zoomScaleBinding = $zoomScale
+
+        zoomScale = 1.0
         return scrollView
     }
 
     func updateUIView(_ scrollView: UIScrollView, context: Context) {
         context.coordinator.imageView?.image = image
+        context.coordinator.zoomScaleBinding = $zoomScale
 
         if context.coordinator.lastImageId != imageId {
             context.coordinator.lastImageId = imageId
             scrollView.setZoomScale(1.0, animated: false)
             scrollView.setContentOffset(.zero, animated: false)
+            zoomScale = 1.0
         }
     }
 
     final class Coordinator: NSObject, UIScrollViewDelegate {
         fileprivate weak var imageView: UIImageView?
         fileprivate var lastImageId: String = ""
+        fileprivate var zoomScaleBinding: Binding<CGFloat>?
 
         func viewForZooming(in scrollView: UIScrollView) -> UIView? {
             _ = scrollView
             return imageView
+        }
+
+        func scrollViewDidZoom(_ scrollView: UIScrollView) {
+            zoomScaleBinding?.wrappedValue = scrollView.zoomScale
+        }
+
+        func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {
+            _ = view
+            _ = scale
+            zoomScaleBinding?.wrappedValue = scrollView.zoomScale
         }
     }
 }
@@ -74,9 +92,11 @@ struct ZoomableImageScrollView: UIViewRepresentable {
 #else
 struct ZoomableImageScrollView: View {
     let imageId: String
+    @Binding var zoomScale: CGFloat
 
     var body: some View {
         _ = imageId
+        _ = zoomScale
         return Image(systemName: "photo")
     }
 }
