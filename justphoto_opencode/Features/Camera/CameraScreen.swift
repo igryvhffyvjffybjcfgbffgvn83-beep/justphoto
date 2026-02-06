@@ -15,6 +15,7 @@ struct CameraScreen: View {
     @State private var showingDownReasons = false
     @State private var showingWrapSheet = false
     @State private var showingViewer = false
+    @State private var showingPhotoViewer = false
 
     @State private var didShowCameraPermissionPreprompt = false
     @State private var cameraPermissionDeclined = false
@@ -54,7 +55,11 @@ struct CameraScreen: View {
                         items: filmstripItems,
                         selectedItemId: $selectedFilmstripItemId,
                         onSelect: { item in
+                            selectedFilmstripItemId = item.itemId
+                            showingPhotoViewer = true
+                            #if DEBUG
                             print("FilmstripSelect: item_id=\(item.itemId) shot_seq=\(item.shotSeq)")
+                            #endif
                         }
                     )
                     .frame(height: 66)
@@ -173,6 +178,9 @@ struct CameraScreen: View {
             if !newValue { refreshSessionCounts() }
         }
         .onChange(of: showingViewer) { _, newValue in
+            if !newValue { refreshSessionCounts() }
+        }
+        .onChange(of: showingPhotoViewer) { _, newValue in
             if !newValue { refreshSessionCounts() }
         }
         .onChange(of: warmup.phase) { _, newValue in
@@ -401,6 +409,10 @@ struct CameraScreen: View {
         }
         .sheet(isPresented: $showingViewer) {
             ViewerScreen()
+                .environment(\.promptHostInstalled, false)
+        }
+        .sheet(isPresented: $showingPhotoViewer) {
+            ViewerContainer(items: filmstripItems, initialItemId: selectedFilmstripItemId)
                 .environment(\.promptHostInstalled, false)
         }
     }

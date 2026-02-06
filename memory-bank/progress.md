@@ -126,7 +126,7 @@ Notes / Known limitations (track for later milestones):
 - [x] M5.1 Create Filmstrip component file
 - [x] M5.2 Implement “newest first” ordering everywhere
 - [x] M5.3 Implement state badges mapping (saving / ! / normal)
-- [ ] M5.4 Create ViewerContainer file (x/y, close, like)
+- [x] M5.4 Create ViewerContainer file (x/y, close, like)
 - [ ] M5.5 Create Zoom/Pan UIKit bridge file
 - [ ] M5.6 Implement scale<=1.01 treated as 1 (PRD)
 - [ ] M5.7 Implement “pinch wins over swipe”
