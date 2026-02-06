@@ -1,38 +1,123 @@
 import Foundation
 import Combine
 
+struct PromptActionEvent: Sendable, Equatable {
+    var promptKey: String
+    var actionId: String
+}
+
 @MainActor
 final class PromptCenter: ObservableObject {
     @Published private(set) var toast: Prompt?
     @Published private(set) var banner: Prompt?
     @Published private(set) var modal: Prompt?
 
+    private let actionSubject = PassthroughSubject<PromptActionEvent, Never>()
+    var actionPublisher: AnyPublisher<PromptActionEvent, Never> {
+        actionSubject.eraseToAnyPublisher()
+    }
+
+    private let diagnostics = DiagnosticsEventWriter.shared
+
     func show(_ prompt: Prompt) {
+        if shouldSuppressBeforeShow(prompt) {
+            return
+        }
+
         switch prompt.level {
         case .L1:
-            toast = choose(existing: toast, incoming: prompt, slot: "toast")
+            let chosen = choose(existing: toast, incoming: prompt, slot: "toast")
+            toast = chosen
+            if chosen == prompt {
+                didShow(prompt)
+                logPromptShown(prompt)
+            }
         case .L2:
-            banner = choose(existing: banner, incoming: prompt, slot: "banner")
+            let chosen = choose(existing: banner, incoming: prompt, slot: "banner")
+            banner = chosen
+            if chosen == prompt {
+                didShow(prompt)
+                logPromptShown(prompt)
+            }
         case .L3:
-            modal = choose(existing: modal, incoming: prompt, slot: "modal")
+            let chosen = choose(existing: modal, incoming: prompt, slot: "modal")
+            modal = chosen
+            if chosen == prompt {
+                didShow(prompt)
+                logPromptShown(prompt)
+            }
+        }
+    }
+
+    private func shouldSuppressBeforeShow(_ prompt: Prompt) -> Bool {
+        switch prompt.gate {
+        case .sessionOnce:
+            let key = PromptGateFlagKeys.sessionOnce(promptKey: prompt.key)
+            do {
+                if try SessionRepository.shared.sessionFlagBool(key) {
+                    print("PromptGated:\(prompt.key) gate=sessionOnce")
+                    return true
+                }
+            } catch {
+                // Prefer showing the prompt over suppressing it if gating fails.
+                print("PromptGateCheckFAILED:\(prompt.key) gate=sessionOnce error=\(error)")
+            }
+            return false
+        case .none, .installOnce, .stateOnly:
+            return false
+        }
+    }
+
+    private func didShow(_ prompt: Prompt) {
+        switch prompt.gate {
+        case .sessionOnce:
+            let key = PromptGateFlagKeys.sessionOnce(promptKey: prompt.key)
+            do {
+                try SessionRepository.shared.setSessionFlagBool(key, value: true)
+            } catch {
+                print("PromptGateWriteFAILED:\(prompt.key) gate=sessionOnce error=\(error)")
+            }
+        case .none, .installOnce, .stateOnly:
+            break
+        }
+    }
+
+    func actionTapped(prompt: Prompt, actionId: String) {
+        print("PromptActionTapped:\(prompt.key) action=\(actionId)")
+        logPromptActionTapped(prompt, actionId: actionId)
+        actionSubject.send(.init(promptKey: prompt.key, actionId: actionId))
+
+        switch prompt.level {
+        case .L1:
+            guard toast?.id == prompt.id else { return }
+            dismissToast(reason: .action)
+        case .L2:
+            guard banner?.id == prompt.id else { return }
+            dismissBanner(reason: .action)
+        case .L3:
+            guard modal?.id == prompt.id else { return }
+            dismissModal(reason: .action)
         }
     }
 
     func dismissModal(reason: DismissReason) {
         guard let existing = modal else { return }
         print("PromptDismissed:\(existing.key) reason=\(reason.rawValue)")
+        logPromptDismissed(existing, reason: reason)
         modal = nil
     }
 
     func dismissToast(reason: DismissReason) {
         guard let existing = toast else { return }
         print("PromptDismissed:\(existing.key) reason=\(reason.rawValue)")
+        logPromptDismissed(existing, reason: reason)
         toast = nil
     }
 
     func dismissBanner(reason: DismissReason) {
         guard let existing = banner else { return }
         print("PromptDismissed:\(existing.key) reason=\(reason.rawValue)")
+        logPromptDismissed(existing, reason: reason)
         banner = nil
     }
 
@@ -58,5 +143,40 @@ final class PromptCenter: ObservableObject {
     private func preempt(existing: Prompt, incoming: Prompt) {
         print("PromptPreempted:\(existing.key)->\(incoming.key)")
         print("PromptDismissed:\(existing.key) reason=\(DismissReason.preempt.rawValue)")
+        logPromptDismissed(existing, reason: .preempt)
+    }
+
+    private func diagnosticsContext() -> (sessionId: String, scene: String)? {
+        if let current = try? SessionRepository.shared.loadCurrentSession() {
+            return (sessionId: current.sessionId, scene: current.scene)
+        }
+        if let sessionId = try? SessionRepository.shared.currentSessionId() {
+            return (sessionId: sessionId, scene: "cafe")
+        }
+        if let sessionId = try? SessionRepository.shared.createNewSession(scene: "cafe") {
+            return (sessionId: sessionId, scene: "cafe")
+        }
+        return nil
+    }
+
+    private func logPromptShown(_ prompt: Prompt) {
+        guard let ctx = diagnosticsContext() else { return }
+        Task {
+            await diagnostics.logPromptShown(sessionId: ctx.sessionId, scene: ctx.scene, prompt: prompt)
+        }
+    }
+
+    private func logPromptDismissed(_ prompt: Prompt, reason: DismissReason) {
+        guard let ctx = diagnosticsContext() else { return }
+        Task {
+            await diagnostics.logPromptDismissed(sessionId: ctx.sessionId, scene: ctx.scene, prompt: prompt, dismissReason: reason)
+        }
+    }
+
+    private func logPromptActionTapped(_ prompt: Prompt, actionId: String) {
+        guard let ctx = diagnosticsContext() else { return }
+        Task {
+            await diagnostics.logPromptActionTapped(sessionId: ctx.sessionId, scene: ctx.scene, prompt: prompt, actionId: actionId)
+        }
     }
 }

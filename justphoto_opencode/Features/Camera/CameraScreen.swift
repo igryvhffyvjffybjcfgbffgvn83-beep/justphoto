@@ -1,12 +1,42 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct CameraScreen: View {
     @EnvironmentObject private var promptCenter: PromptCenter
+    @Environment(\.openURL) private var openURL
+
+    @StateObject private var warmup = WarmupTracker()
 
     @State private var showingSettings = false
     @State private var showingPaywall = false
     @State private var showingInspiration = false
     @State private var showingDownReasons = false
+    @State private var showingWrapSheet = false
+    @State private var showingViewer = false
+
+    @State private var didShowCameraPermissionPreprompt = false
+    @State private var cameraPermissionDeclined = false
+
+    @State private var didShowWarmupFailModal = false
+    @State private var didShowWorkset20LimitModalInThisFullState = false
+
+    // If the user cancels the write_failed blocking modal, don't immediately re-show it
+    // unless the write_failed count changes (new failures) or failures are cleared.
+    @State private var dismissedWriteFailedCount: Int? = nil
+
+    @State private var cameraAuth: CameraAuth = CameraAuthMapper.currentVideoAuth()
+    @State private var lastPermissionBannerAuth: CameraAuth?
+
+    @State private var worksetCount: Int = 0
+    @State private var inFlightCount: Int = 0
+    @State private var writeFailedCount: Int = 0
+    @State private var albumAddFailedCount: Int = 0
+
+    @State private var filmstripItems: [SessionRepository.SessionItemSummary] = []
+    @State private var selectedFilmstripItemId: String? = nil
+    @State private var lastFilmstripCount: Int = 0
 
     var body: some View {
         NavigationStack {
@@ -16,6 +46,45 @@ struct CameraScreen: View {
 
                 Text("MVP shell (no camera yet)")
                     .foregroundStyle(.secondary)
+
+                previewArea
+
+                if !filmstripItems.isEmpty {
+                    Filmstrip(
+                        items: filmstripItems,
+                        selectedItemId: $selectedFilmstripItemId,
+                        onSelect: { item in
+                            print("FilmstripSelect: item_id=\(item.itemId) shot_seq=\(item.shotSeq)")
+                        }
+                    )
+                    .frame(height: 66)
+                    .padding(.top, -6)
+                }
+
+                Button("Shutter") {
+                    CaptureCoordinator.shared.shutterTapped()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!shutterGateResult.isEnabled)
+
+#if DEBUG
+                Button("ExplainShutterDisabledReason") {
+                    let r = shutterGateResult
+                    if r.isEnabled {
+                        print("ShutterEnabled")
+                    } else {
+                        print("ShutterDisabled:\(r.reason?.rawValue ?? "unknown")")
+                    }
+                    print("ShutterGateDebug: \(r.debugDescription)")
+                }
+                .buttonStyle(.bordered)
+#endif
+
+                if cameraPermissionDeclined {
+                    Text("Camera permission not requested (declined).")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
 
                 HStack(spacing: 12) {
                     Button("Settings") { showingSettings = true }
@@ -68,6 +137,240 @@ struct CameraScreen: View {
             .padding()
             .navigationTitle("Just Photo")
         }
+        .task {
+            refreshCameraAuth()
+            refreshWarmupState()
+            refreshSessionCounts()
+            refreshFilmstrip()
+            maybeShowCameraPermissionPreprompt()
+            maybeShowPermissionBanner()
+        }
+#if canImport(UIKit)
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            refreshCameraAuth()
+            refreshWarmupState()
+            refreshSessionCounts()
+            maybeShowPermissionBanner()
+        }
+#endif
+        .onChange(of: cameraAuth) { _, _ in
+            refreshWarmupState()
+            maybeShowPermissionBanner()
+        }
+        .onChange(of: warmup.phase) { _, _ in
+            refreshSessionCounts()
+        }
+        .onChange(of: showingSettings) { _, newValue in
+            if !newValue { refreshSessionCounts() }
+        }
+        .onChange(of: showingPaywall) { _, newValue in
+            if !newValue { refreshSessionCounts() }
+        }
+        .onChange(of: showingInspiration) { _, newValue in
+            if !newValue { refreshSessionCounts() }
+        }
+        .onChange(of: showingDownReasons) { _, newValue in
+            if !newValue { refreshSessionCounts() }
+        }
+        .onChange(of: showingViewer) { _, newValue in
+            if !newValue { refreshSessionCounts() }
+        }
+        .onChange(of: warmup.phase) { _, newValue in
+            guard newValue == .failed else { return }
+            guard !didShowWarmupFailModal else { return }
+            didShowWarmupFailModal = true
+            promptCenter.show(makeWarmupFailedPrompt())
+        }
+        .onReceive(promptCenter.actionPublisher) { e in
+            switch e.promptKey {
+            case "camera_permission_preprompt":
+                switch e.actionId {
+                case "continue":
+                    print("CameraPermissionPreprompt: continue")
+                    cameraPermissionDeclined = false
+
+                    let current = CameraAuthMapper.currentVideoAuth()
+                    guard current == .not_determined else {
+                        print("CameraPermissionRequestSkipped: current=\(current.rawValue)")
+                        return
+                    }
+
+                    Task {
+                        print("CameraPermissionRequestStart")
+                        let granted = await CameraAuthMapper.requestVideoAccess()
+                        let after = CameraAuthMapper.currentVideoAuth()
+                        print("CameraPermissionRequestResult: granted=\(granted) after=\(after.rawValue)")
+
+                        await MainActor.run {
+                            cameraAuth = after
+                            cameraPermissionDeclined = !granted
+                            refreshWarmupState()
+                        }
+                    }
+                case "cancel":
+                    print("CameraPermissionPreprompt: cancel")
+                    cameraPermissionDeclined = true
+                default:
+                    break
+                }
+            case "camera_permission_denied":
+                guard e.actionId == "go_settings" else { return }
+#if canImport(UIKit)
+                openURL(URL(string: UIApplication.openSettingsURLString)!)
+#else
+                print("OpenSettingsUnavailable")
+#endif
+            case "camera_permission_restricted":
+                guard e.actionId == "understand" else { return }
+                // No-op; the banner dismisses automatically on action.
+                print("CameraPermissionRestricted: understand")
+            case "camera_warmup_failed":
+                switch e.actionId {
+                case "retry":
+                    print("CameraInitRetry")
+                    didShowWarmupFailModal = false
+                    refreshWarmupState(forceRestart: true)
+                case "cancel":
+                    print("CameraWarmupFailed: cancel")
+                case "go_settings":
+#if canImport(UIKit)
+                    openURL(URL(string: UIApplication.openSettingsURLString)!)
+#else
+                    print("OpenSettingsUnavailable")
+#endif
+                default:
+                    break
+                }
+            case "workset_20_limit_modal":
+                switch e.actionId {
+                case "clear_unliked":
+                    do {
+                        let deleted = try SessionRepository.shared.clearUnlikedItemsForCurrentSession()
+                        print("WorksetClearUnliked: deleted=\(deleted)")
+                        refreshSessionCounts()
+                        promptCenter.show(
+                            Prompt(
+                                key: "workset_clear_unliked_done",
+                                level: .L1,
+                                surface: .cameraToastBottom,
+                                priority: 10,
+                                blocksShutter: false,
+                                isClosable: false,
+                                autoDismissSeconds: 2.0,
+                                gate: .none,
+                                title: nil,
+                                message: "已清理未喜欢（\(deleted)）",
+                                primaryActionId: nil,
+                                primaryTitle: nil,
+                                secondaryActionId: nil,
+                                secondaryTitle: nil,
+                                tertiaryActionId: nil,
+                                tertiaryTitle: nil,
+                                throttle: .init(
+                                    perKeyMinIntervalSec: 0,
+                                    globalWindowSec: 0,
+                                    globalMaxCountInWindow: 0,
+                                    suppressAfterDismissSec: 0
+                                ),
+                                payload: ["deleted": .int(deleted)],
+                                emittedAt: Date()
+                            )
+                        )
+                    } catch {
+                        print("WorksetClearUnlikedFAILED: \(error)")
+                    }
+                case "go_wrap":
+                    showingWrapSheet = true
+                case "reset_session":
+                    do {
+                        let scene = (try SessionRepository.shared.loadCurrentSession()?.scene) ?? "cafe"
+                        try SessionRepository.shared.clearCurrentSession(deleteData: true)
+                        _ = try SessionRepository.shared.createNewSession(scene: scene)
+                        didShowWorkset20LimitModalInThisFullState = false
+                        refreshSessionCounts()
+                        print("SessionReset: ok")
+                    } catch {
+                        print("SessionResetFAILED: \(error)")
+                    }
+                case "cancel":
+                    // Cancel keeps shutter disabled while workset_count == 20 (SessionRuleGate enforces this).
+                    break
+                default:
+                    break
+                }
+            case "workset_20_full_banner":
+                guard e.actionId == "open_modal" else { break }
+                promptCenter.show(makeWorkset20LimitModalPrompt())
+            case "write_failed_block_modal":
+                switch e.actionId {
+                case "view":
+                    showingViewer = true
+                case "cancel":
+                    dismissedWriteFailedCount = writeFailedCount
+                default:
+                    break
+                }
+            case "capture_failed_abnormal_modal":
+                switch e.actionId {
+                case "retry":
+                    Task { await CaptureFailureTracker.shared.reset() }
+                    refreshWarmupState(forceRestart: true)
+                case "cancel":
+                    Task { await CaptureFailureTracker.shared.reset() }
+                default:
+                    break
+                }
+            case "album_add_failed_banner":
+                switch e.actionId {
+                case "retry_album_add":
+                    Task {
+                        await retryAlbumAddFailedBatch()
+                    }
+                case "later":
+                    break
+                default:
+                    break
+                }
+            default:
+                break
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: CaptureEvents.captureFailed)) { _ in
+            refreshSessionCounts()
+            refreshFilmstrip()
+            Task {
+                let r = await CaptureFailureTracker.shared.recordFailure()
+                await MainActor.run {
+                    print("CaptureFailedTracked: count_in_window=\(r.countInWindow) did_trigger=\(r.didTrigger)")
+                    if r.didTrigger {
+                        promptCenter.show(makeCaptureAbnormalModalPrompt(countInWindow: r.countInWindow))
+                    } else {
+                        promptCenter.show(makeCaptureFailedToast())
+                    }
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: CaptureEvents.writeFailed)) { _ in
+            refreshSessionCounts()
+            refreshFilmstrip()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: CaptureEvents.albumAddFailed)) { _ in
+            refreshSessionCounts()
+            refreshFilmstrip()
+
+            // M4.25: show once per session, only when a failure happens (not on app launch).
+            do {
+                let c = try SessionRepository.shared.countAlbumAddFailedItems()
+                if c > 0 {
+                    promptCenter.show(makeAlbumAddFailedBannerPrompt(count: c))
+                }
+            } catch {
+                print("AlbumAddFailedCountFAILED: \(error)")
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: CaptureEvents.sessionItemsChanged)) { _ in
+            refreshFilmstrip()
+        }
         .sheet(isPresented: $showingSettings) {
             SettingsSheet()
                 .environment(\.promptHostInstalled, false)
@@ -84,6 +387,701 @@ struct CameraScreen: View {
             DownReasonsSheet()
                 .environment(\.promptHostInstalled, false)
         }
+        .sheet(isPresented: $showingWrapSheet) {
+            WrapScreen()
+                .environment(\.promptHostInstalled, false)
+        }
+        .sheet(isPresented: $showingViewer) {
+            ViewerScreen()
+                .environment(\.promptHostInstalled, false)
+        }
+    }
+
+    private func maybeShowCameraPermissionPreprompt() {
+        guard !didShowCameraPermissionPreprompt else { return }
+        guard cameraAuth == .not_determined else { return }
+
+        didShowCameraPermissionPreprompt = true
+        cameraPermissionDeclined = false
+        promptCenter.show(makeCameraPermissionPreprompt())
+    }
+
+    private func refreshCameraAuth() {
+        cameraAuth = CameraAuthMapper.currentVideoAuth()
+    }
+
+    private func refreshWarmupState(forceRestart: Bool = false) {
+        switch cameraAuth {
+        case .authorized:
+            let delay = WarmupDebugSettings.simulatedReadyDelaySec()
+            if forceRestart {
+                warmup.start(simulatedReadyDelaySec: delay)
+            } else {
+                warmup.startIfNeeded(simulatedReadyDelaySec: delay)
+            }
+        default:
+            didShowWarmupFailModal = false
+            warmup.stop()
+        }
+    }
+
+    private func refreshSessionCounts() {
+        do {
+            let previous = worksetCount
+            let counts = try SessionRepository.shared.currentWorksetCounter()
+            let nextWorkset = counts?.worksetCount ?? 0
+            worksetCount = nextWorkset
+            inFlightCount = counts?.inFlightCount ?? 0
+            writeFailedCount = try SessionRepository.shared.countWriteFailedItems()
+            albumAddFailedCount = try SessionRepository.shared.countAlbumAddFailedItems()
+
+            maybeShowWorkset15CountBanner(previousWorksetCount: previous, currentWorksetCount: nextWorkset)
+            maybeShowWorkset20LimitModal(previousWorksetCount: previous, currentWorksetCount: nextWorkset)
+            updateWorksetFullBanner(currentWorksetCount: nextWorkset)
+            updateWriteFailedBlockModal(writeFailedCount: writeFailedCount)
+        } catch {
+            print("RefreshSessionCountsFAILED: \(error)")
+        }
+    }
+
+    private func refreshFilmstrip() {
+        do {
+            filmstripItems = try SessionRepository.shared.latestItemsForCurrentSession(limit: 30)
+            if filmstripItems.count != lastFilmstripCount {
+                lastFilmstripCount = filmstripItems.count
+                print("FilmstripRefreshed: count=\(filmstripItems.count)")
+            }
+            if selectedFilmstripItemId == nil {
+                selectedFilmstripItemId = filmstripItems.first?.itemId
+            }
+        } catch {
+            filmstripItems = []
+            selectedFilmstripItemId = nil
+            lastFilmstripCount = 0
+            print("RefreshFilmstripFAILED: \(error)")
+        }
+    }
+
+    private func updateWriteFailedBlockModal(writeFailedCount: Int) {
+        if writeFailedCount <= 0 {
+            dismissedWriteFailedCount = nil
+            return
+        }
+
+        // Don't keep preempting the same modal with itself.
+        if promptCenter.modal?.key == "write_failed_block_modal" { return }
+
+        // If another modal is visible, don't preempt it here.
+        if let modal = promptCenter.modal, modal.key != "write_failed_block_modal" { return }
+
+        if dismissedWriteFailedCount == writeFailedCount {
+            return
+        }
+
+        let p = makeWriteFailedBlockModalPrompt()
+        promptCenter.show(p)
+    }
+
+    private func maybeShowWorkset15CountBanner(previousWorksetCount: Int, currentWorksetCount: Int) {
+        // M4.3: Only trigger on the 14 -> 15 transition; do not show if entering Camera with >= 15.
+        guard previousWorksetCount == 14, currentWorksetCount == 15 else { return }
+        promptCenter.show(makeWorkset15CountBannerPrompt())
+    }
+
+    private func maybeShowWorkset20LimitModal(previousWorksetCount: Int, currentWorksetCount: Int) {
+        if currentWorksetCount < 20 {
+            didShowWorkset20LimitModalInThisFullState = false
+            return
+        }
+
+        // Defensive: treat 20+ as "full".
+        guard currentWorksetCount >= 20 else { return }
+        guard !didShowWorkset20LimitModalInThisFullState else { return }
+
+        let p = makeWorkset20LimitModalPrompt()
+        promptCenter.show(p)
+        if promptCenter.modal?.key == p.key {
+            didShowWorkset20LimitModalInThisFullState = true
+        }
+    }
+
+    private func updateWorksetFullBanner(currentWorksetCount: Int) {
+        // If the user cancels the 20-limit modal, keep an actionable banner so they can
+        // reopen it and resolve the full-workset state.
+        if currentWorksetCount < 20 {
+            if let banner = promptCenter.banner, banner.key == "workset_20_full_banner" {
+                promptCenter.dismissBanner(reason: .auto)
+            }
+            return
+        }
+
+        // If the blocking modal is visible, don't also show the banner.
+        if promptCenter.modal?.key == "workset_20_limit_modal" {
+            if let banner = promptCenter.banner, banner.key == "workset_20_full_banner" {
+                promptCenter.dismissBanner(reason: .auto)
+            }
+            return
+        }
+
+        promptCenter.show(makeWorkset20FullBannerPrompt())
+    }
+
+    private var shutterGateResult: SessionRuleGate.Result {
+        SessionRuleGate.evaluate(
+            .init(
+                cameraAuth: cameraAuth,
+                warmupPhase: warmup.phase,
+                worksetCount: worksetCount,
+                inFlightCount: inFlightCount,
+                writeFailedCount: writeFailedCount
+            )
+        )
+    }
+
+    private var previewArea: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(.systemGray6), Color(.systemGray5)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(.black.opacity(0.06), lineWidth: 1)
+                )
+
+            VStack(spacing: 8) {
+                switch cameraAuth {
+                case .authorized:
+                    Text("Camera preview")
+                        .font(.headline)
+                    Text("(not wired yet)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                case .denied:
+                    Text("No camera preview")
+                        .font(.headline)
+                    Text("Permission denied")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                case .restricted:
+                    Text("No camera preview")
+                        .font(.headline)
+                    Text("Restricted by system")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                case .not_determined:
+                    Text("Camera permission")
+                        .font(.headline)
+                    Text("Not requested")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding()
+
+            if cameraAuth == .authorized, warmup.phase != .ready {
+                warmupOverlay
+                    .transition(.opacity)
+            }
+        }
+        .frame(height: 360)
+    }
+
+    private var warmupOverlay: some View {
+        let message: String
+        switch warmup.phase {
+        case .warming:
+            message = "相机准备中…"
+        case .upgraded:
+            message = "相机准备中…（可能需要几秒）"
+        case .failed:
+            message = "相机初始化失败"
+        case .idle, .ready:
+            message = ""
+        }
+
+        return VStack(spacing: 10) {
+            ProgressView()
+                .tint(.white)
+            Text(message)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(.black.opacity(0.72))
+        )
+        .padding(16)
+    }
+
+    private func makeWarmupFailedPrompt() -> Prompt {
+        let reason = currentWarmupFailureReason()
+        let message = "\(reason.explanationText)。相机准备超时（>8s）。"
+        return Prompt(
+            key: "camera_warmup_failed",
+            level: .L3,
+            surface: .cameraModalCenter,
+            priority: 95,
+            blocksShutter: true,
+            isClosable: false,
+            autoDismissSeconds: nil,
+            gate: .stateOnly,
+            title: "相机初始化失败",
+            message: message,
+            primaryActionId: "retry",
+            primaryTitle: "重试",
+            secondaryActionId: "cancel",
+            secondaryTitle: "取消",
+            tertiaryActionId: (reason == .permission_denied) ? "go_settings" : nil,
+            tertiaryTitle: (reason == .permission_denied) ? "去设置" : nil,
+            throttle: .init(
+                perKeyMinIntervalSec: 0,
+                globalWindowSec: 0,
+                globalMaxCountInWindow: 0,
+                suppressAfterDismissSec: 0
+            ),
+            payload: [:],
+            emittedAt: Date()
+        )
+    }
+
+    private func currentWarmupFailureReason() -> CameraInitFailureReason {
+        if let simulated = CameraInitFailureDebugSettings.simulatedFailureReason() {
+            return simulated
+        }
+
+        if cameraAuth == .denied || cameraAuth == .restricted {
+            return .permission_denied
+        }
+
+        return .unknown
+    }
+
+    private func maybeShowPermissionBanner() {
+        switch cameraAuth {
+        case .denied, .restricted:
+            guard lastPermissionBannerAuth != cameraAuth else { return }
+            lastPermissionBannerAuth = cameraAuth
+            switch cameraAuth {
+            case .denied:
+                promptCenter.show(makeDeniedPermissionBanner())
+            case .restricted:
+                promptCenter.show(makeRestrictedPermissionBanner())
+            default:
+                break
+            }
+        default:
+            lastPermissionBannerAuth = nil
+            if let banner = promptCenter.banner,
+               banner.key == "camera_permission_denied" || banner.key == "camera_permission_restricted"
+            {
+                promptCenter.dismissBanner(reason: .auto)
+            }
+        }
+    }
+
+    private func makeDeniedPermissionBanner() -> Prompt {
+        Prompt(
+            key: "camera_permission_denied",
+            level: .L2,
+            surface: .cameraBannerTop,
+            priority: 80,
+            blocksShutter: true,
+            isClosable: false,
+            autoDismissSeconds: nil,
+            gate: .stateOnly,
+            title: nil,
+            message: "未获得相机权限，无法拍照",
+            primaryActionId: "go_settings",
+            primaryTitle: "去设置",
+            secondaryActionId: nil,
+            secondaryTitle: nil,
+            tertiaryActionId: nil,
+            tertiaryTitle: nil,
+            throttle: .init(
+                perKeyMinIntervalSec: 0,
+                globalWindowSec: 0,
+                globalMaxCountInWindow: 0,
+                suppressAfterDismissSec: 0
+            ),
+            payload: [:],
+            emittedAt: Date()
+        )
+    }
+
+    private func makeRestrictedPermissionBanner() -> Prompt {
+        Prompt(
+            key: "camera_permission_restricted",
+            level: .L2,
+            surface: .cameraBannerTop,
+            priority: 80,
+            blocksShutter: true,
+            isClosable: false,
+            autoDismissSeconds: nil,
+            gate: .stateOnly,
+            title: nil,
+            message: "相机受系统限制，无法使用",
+            primaryActionId: "understand",
+            primaryTitle: "了解",
+            secondaryActionId: nil,
+            secondaryTitle: nil,
+            tertiaryActionId: nil,
+            tertiaryTitle: nil,
+            throttle: .init(
+                perKeyMinIntervalSec: 0,
+                globalWindowSec: 0,
+                globalMaxCountInWindow: 0,
+                suppressAfterDismissSec: 0
+            ),
+            payload: [:],
+            emittedAt: Date()
+        )
+    }
+
+    private func makeCameraPermissionPreprompt() -> Prompt {
+        Prompt(
+            key: "camera_permission_preprompt",
+            level: .L3,
+            surface: .cameraModalCenter,
+            priority: 90,
+            blocksShutter: true,
+            isClosable: false,
+            autoDismissSeconds: nil,
+            gate: .stateOnly,
+            title: "需要相机权限",
+            message: "Just Photo 需要相机权限才能拍照",
+            primaryActionId: "continue",
+            primaryTitle: "继续",
+            secondaryActionId: "cancel",
+            secondaryTitle: "取消",
+            tertiaryActionId: nil,
+            tertiaryTitle: nil,
+            throttle: .init(
+                perKeyMinIntervalSec: 0,
+                globalWindowSec: 0,
+                globalMaxCountInWindow: 0,
+                suppressAfterDismissSec: 0
+            ),
+            payload: [:],
+            emittedAt: Date()
+        )
+    }
+
+    private func makeWorkset15CountBannerPrompt() -> Prompt {
+        Prompt(
+            key: "workset_15_count_banner",
+            level: .L2,
+            surface: .cameraBannerTop,
+            priority: 40,
+            blocksShutter: false,
+            isClosable: true,
+            autoDismissSeconds: nil,
+            gate: .sessionOnce,
+            title: nil,
+            message: "已拍到 15 张。可以去查看并挑选喜欢的照片。",
+            primaryActionId: nil,
+            primaryTitle: nil,
+            secondaryActionId: nil,
+            secondaryTitle: nil,
+            tertiaryActionId: nil,
+            tertiaryTitle: nil,
+            throttle: .init(
+                perKeyMinIntervalSec: 0,
+                globalWindowSec: 0,
+                globalMaxCountInWindow: 0,
+                suppressAfterDismissSec: 0
+            ),
+            payload: [
+                "workset_count": .int(15),
+            ],
+            emittedAt: Date()
+        )
+    }
+
+    private func makeWorkset20LimitModalPrompt() -> Prompt {
+        Prompt(
+            key: "workset_20_limit_modal",
+            level: .L3,
+            surface: .cameraModalCenter,
+            priority: 70,
+            blocksShutter: true,
+            isClosable: false,
+            autoDismissSeconds: nil,
+            gate: .stateOnly,
+            title: "已拍满 20 张",
+            message: "已拍满 20 张，请先挑选或清理。",
+            primaryActionId: "clear_unliked",
+            primaryTitle: "清理未喜欢",
+            secondaryActionId: "go_wrap",
+            secondaryTitle: "去拼图",
+            tertiaryActionId: "reset_session",
+            tertiaryTitle: "重置会话",
+            quaternaryActionId: "cancel",
+            quaternaryTitle: "取消",
+            throttle: .init(
+                perKeyMinIntervalSec: 0,
+                globalWindowSec: 0,
+                globalMaxCountInWindow: 0,
+                suppressAfterDismissSec: 0
+            ),
+            payload: [
+                "workset_count": .int(20),
+            ],
+            emittedAt: Date()
+        )
+    }
+
+    private func makeWorkset20FullBannerPrompt() -> Prompt {
+        Prompt(
+            key: "workset_20_full_banner",
+            level: .L2,
+            surface: .cameraBannerTop,
+            priority: 60,
+            blocksShutter: true,
+            isClosable: false,
+            autoDismissSeconds: nil,
+            gate: .stateOnly,
+            title: nil,
+            message: "已拍满 20 张，请先挑选或清理",
+            primaryActionId: "open_modal",
+            primaryTitle: "处理",
+            secondaryActionId: nil,
+            secondaryTitle: nil,
+            tertiaryActionId: nil,
+            tertiaryTitle: nil,
+            throttle: .init(
+                perKeyMinIntervalSec: 0,
+                globalWindowSec: 0,
+                globalMaxCountInWindow: 0,
+                suppressAfterDismissSec: 0
+            ),
+            payload: [
+                "workset_count": .int(20),
+            ],
+            emittedAt: Date()
+        )
+    }
+
+    private func makeCaptureFailedToast() -> Prompt {
+        Prompt(
+            key: "capture_failed_toast",
+            level: .L1,
+            surface: .cameraToastBottom,
+            priority: 20,
+            blocksShutter: false,
+            isClosable: false,
+            autoDismissSeconds: 2.0,
+            gate: .none,
+            title: nil,
+            message: "没拍到",
+            primaryActionId: nil,
+            primaryTitle: nil,
+            secondaryActionId: nil,
+            secondaryTitle: nil,
+            tertiaryActionId: nil,
+            tertiaryTitle: nil,
+            throttle: .init(
+                perKeyMinIntervalSec: 10,
+                globalWindowSec: 0,
+                globalMaxCountInWindow: 0,
+                suppressAfterDismissSec: 0
+            ),
+            payload: [:],
+            emittedAt: Date()
+        )
+    }
+
+    private func makeCaptureAbnormalModalPrompt(countInWindow: Int) -> Prompt {
+        Prompt(
+            key: "capture_failed_abnormal_modal",
+            level: .L3,
+            surface: .cameraModalCenter,
+            priority: 88,
+            blocksShutter: false,
+            isClosable: false,
+            autoDismissSeconds: nil,
+            gate: .stateOnly,
+            title: "相机异常",
+            message: "连续 \(countInWindow) 次没拍到。建议重试相机初始化，或稍后再试。",
+            primaryActionId: "retry",
+            primaryTitle: "重试",
+            secondaryActionId: "cancel",
+            secondaryTitle: "取消",
+            tertiaryActionId: nil,
+            tertiaryTitle: nil,
+            throttle: .init(
+                perKeyMinIntervalSec: 0,
+                globalWindowSec: 0,
+                globalMaxCountInWindow: 0,
+                suppressAfterDismissSec: 30
+            ),
+            payload: ["count": .int(countInWindow)],
+            emittedAt: Date()
+        )
+    }
+
+    private func makeAlbumAddFailedBannerPrompt(count: Int) -> Prompt {
+        Prompt(
+            key: "album_add_failed_banner",
+            level: .L2,
+            surface: .cameraBannerTop,
+            priority: 60,
+            blocksShutter: false,
+            isClosable: false,
+            autoDismissSeconds: nil,
+            gate: .sessionOnce,
+            title: nil,
+            message: "部分照片未归档到 Just Photo 相册",
+            primaryActionId: "retry_album_add",
+            primaryTitle: "修复",
+            secondaryActionId: "later",
+            secondaryTitle: "稍后",
+            tertiaryActionId: nil,
+            tertiaryTitle: nil,
+            throttle: .init(
+                perKeyMinIntervalSec: 10,
+                globalWindowSec: 20,
+                globalMaxCountInWindow: 2,
+                suppressAfterDismissSec: 60
+            ),
+            payload: ["album_add_failed_count": .int(count)],
+            emittedAt: Date()
+        )
+    }
+
+    private func retryAlbumAddFailedBatch() async {
+        let items: [SessionRepository.SessionItemSummary] = await MainActor.run {
+            (try? SessionRepository.shared.albumAddFailedItemsForCurrentSession()) ?? []
+        }
+
+        await AlbumAddRetryScheduler.shared.cancel(itemIds: items.map { $0.itemId })
+
+        let total = items.count
+        if total == 0 {
+            await MainActor.run {
+                refreshSessionCounts()
+                promptCenter.show(makeAlbumRetryToast(key: "album_retry_empty", message: "暂无需要修复的照片"))
+            }
+            return
+        }
+
+        var ok = 0
+        var failed = 0
+        var skipped = 0
+
+        for item in items {
+            guard let assetId = item.assetId, !assetId.isEmpty else {
+                skipped += 1
+                continue
+            }
+
+            do {
+                _ = try await AlbumArchiver.shared.archive(assetLocalIdentifier: assetId)
+                ok += 1
+                await MainActor.run {
+                    do {
+                        try SessionRepository.shared.markAlbumAddSuccess(itemId: item.itemId)
+                    } catch {
+                        print("AlbumRetryMarkSuccessFAILED: \(error)")
+                    }
+                }
+            } catch {
+                if case AlbumArchiverError.assetNotFound = error {
+                    // Phantom/missing asset: heal locally and exclude from results.
+                    if let report = await PhantomAssetHealer.shared.healIfNeeded(itemId: item.itemId, assetId: assetId, source: "album_manual_retry") {
+                        skipped += 1
+                        print("AlbumRetryHealedPhantom: item_id=\(item.itemId) action=\(report.healAction.rawValue)")
+                        continue
+                    }
+                }
+                failed += 1
+                print("AlbumRetryFAILED: item_id=\(item.itemId) asset_id=\(assetId) error=\(error)")
+            }
+        }
+
+        await MainActor.run {
+            refreshSessionCounts()
+
+            let msg: String
+            if failed == 0 {
+                msg = "修复完成：\(ok)/\(total)"
+            } else {
+                msg = "修复结果：\(ok)/\(total)（失败\(failed)）"
+            }
+            let payload: [String: PromptPayloadValue] = [
+                "total": .int(total),
+                "ok": .int(ok),
+                "failed": .int(failed),
+                "skipped": .int(skipped),
+            ]
+            promptCenter.show(makeAlbumRetryToast(key: "album_retry_result", message: msg, payload: payload))
+        }
+    }
+
+    private func makeAlbumRetryToast(key: String, message: String, payload: [String: PromptPayloadValue] = [:]) -> Prompt {
+        Prompt(
+            key: key,
+            level: .L1,
+            surface: .cameraToastBottom,
+            priority: 6,
+            blocksShutter: false,
+            isClosable: false,
+            autoDismissSeconds: 2.0,
+            gate: .none,
+            title: nil,
+            message: message,
+            primaryActionId: nil,
+            primaryTitle: nil,
+            secondaryActionId: nil,
+            secondaryTitle: nil,
+            tertiaryActionId: nil,
+            tertiaryTitle: nil,
+            throttle: .init(
+                perKeyMinIntervalSec: 2,
+                globalWindowSec: 0,
+                globalMaxCountInWindow: 0,
+                suppressAfterDismissSec: 0
+            ),
+            payload: payload,
+            emittedAt: Date()
+        )
+    }
+
+    private func makeWriteFailedBlockModalPrompt() -> Prompt {
+        Prompt(
+            key: "write_failed_block_modal",
+            level: .L3,
+            surface: .cameraModalCenter,
+            priority: 92,
+            blocksShutter: true,
+            isClosable: false,
+            autoDismissSeconds: nil,
+            gate: .stateOnly,
+            title: "有照片未保存",
+            message: "有照片未保存，请先处理。",
+            primaryActionId: "view",
+            primaryTitle: "查看并处理",
+            secondaryActionId: "cancel",
+            secondaryTitle: "取消",
+            tertiaryActionId: nil,
+            tertiaryTitle: nil,
+            throttle: .init(
+                perKeyMinIntervalSec: 0,
+                globalWindowSec: 0,
+                globalMaxCountInWindow: 0,
+                suppressAfterDismissSec: 0
+            ),
+            payload: [
+                "write_failed_count": .int(writeFailedCount),
+            ],
+            emittedAt: Date()
+        )
     }
 }
 

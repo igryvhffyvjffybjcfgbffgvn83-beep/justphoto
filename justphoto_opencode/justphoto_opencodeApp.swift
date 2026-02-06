@@ -33,6 +33,11 @@ struct justphoto_opencodeApp: App {
             if let counts = try SessionRepository.shared.currentWorksetCounts() {
                 print("WorksetCounts: session_items=\(counts.sessionItems) ref_items=\(counts.refItems)")
             }
+
+            // M4.28: retry pending album_add_failed once on next launch.
+            Task {
+                await AlbumAddRetryScheduler.shared.kick()
+            }
         } catch {
             print("DBOpenFAILED: \(error)")
         }
@@ -48,6 +53,7 @@ struct justphoto_opencodeApp: App {
                         do {
                             _ = try SessionRepository.shared.ensureFreshSession(scene: "cafe")
                             try SessionRepository.shared.touchCurrentSession()
+                            Task { await AlbumAddRetryScheduler.shared.kick() }
                         } catch {
                             print("SessionEnsureFAILED: \(error)")
                         }

@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct ContentView: View {
     var body: some View {
@@ -54,8 +55,16 @@ private struct PromptBannerView: View {
 
             if let primaryTitle = prompt.primaryTitle, !primaryTitle.isEmpty {
                 Button(primaryTitle) {
-                    print("BannerPrimaryTapped")
-                    promptCenter.dismissBanner(reason: .action)
+                    let actionId = prompt.primaryActionId ?? "primary"
+                    promptCenter.actionTapped(prompt: prompt, actionId: actionId)
+                }
+                .buttonStyle(.bordered)
+            }
+
+            if let secondaryTitle = prompt.secondaryTitle, !secondaryTitle.isEmpty {
+                Button(secondaryTitle) {
+                    let actionId = prompt.secondaryActionId ?? "secondary"
+                    promptCenter.actionTapped(prompt: prompt, actionId: actionId)
                 }
                 .buttonStyle(.bordered)
             }
@@ -164,14 +173,12 @@ private struct PromptModalView: View {
                 ForEach(prompt.actions) { action in
                     if action.id == prompt.primaryActionId {
                         Button(action.title) {
-                            print("PromptActionTapped:\(prompt.key) action=\(action.id)")
-                            promptCenter.dismissModal(reason: .action)
+                            promptCenter.actionTapped(prompt: prompt, actionId: action.id)
                         }
                         .buttonStyle(.borderedProminent)
                     } else {
                         Button(action.title) {
-                            print("PromptActionTapped:\(prompt.key) action=\(action.id)")
-                            promptCenter.dismissModal(reason: .action)
+                            promptCenter.actionTapped(prompt: prompt, actionId: action.id)
                         }
                         .buttonStyle(.bordered)
                     }
@@ -223,6 +230,7 @@ private struct PromptModalOverlayView: View {
 
 private struct PromptHostOverlay: View {
     @EnvironmentObject private var promptCenter: PromptCenter
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
 
     var body: some View {
         VStack(spacing: 0) {
@@ -231,6 +239,35 @@ private struct PromptHostOverlay: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 10)
                     .transition(.move(edge: .top).combined(with: .opacity))
+                    .task(id: banner.id) {
+                        let hasPrimary = (banner.primaryTitle?.isEmpty == false)
+                        guard !hasPrimary else { return }
+
+                        let voiceOverUI = UIAccessibility.isVoiceOverRunning
+                        let voiceOver = voiceOverUI || voiceOverEnabled
+ 
+                        let seconds = PromptTimings.bannerAutoDismissSeconds(
+                            base: banner.autoDismissSeconds,
+                            voiceOverEnabled: voiceOver
+                        )
+
+                        print(
+                            "PromptAutoDismissScheduled:\(banner.key) kind=banner seconds=\(seconds) voiceOver=\(voiceOver) voiceOver_ui=\(voiceOverUI) voiceOver_env=\(voiceOverEnabled)"
+                        )
+
+                        let ns = UInt64(max(0.0, seconds) * 1_000_000_000)
+                        do {
+                            try await Task.sleep(nanoseconds: ns)
+                        } catch {
+                            return
+                        }
+
+                        if promptCenter.banner?.id == banner.id {
+                            await MainActor.run {
+                                promptCenter.dismissBanner(reason: .auto)
+                            }
+                        }
+                    }
             }
 
             Spacer(minLength: 0)
@@ -242,7 +279,17 @@ private struct PromptHostOverlay: View {
                     .allowsHitTesting(false)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .task(id: toast.id) {
-                        guard let seconds = toast.autoDismissSeconds else { return }
+                        let voiceOverUI = UIAccessibility.isVoiceOverRunning
+                        let voiceOver = voiceOverUI || voiceOverEnabled
+
+                        let seconds = PromptTimings.toastAutoDismissSeconds(
+                            base: toast.autoDismissSeconds,
+                            voiceOverEnabled: voiceOver
+                        )
+
+                        print(
+                            "PromptAutoDismissScheduled:\(toast.key) kind=toast seconds=\(seconds) voiceOver=\(voiceOver) voiceOver_ui=\(voiceOverUI) voiceOver_env=\(voiceOverEnabled)"
+                        )
 
                         let ns = UInt64(max(0.0, seconds) * 1_000_000_000)
                         do {

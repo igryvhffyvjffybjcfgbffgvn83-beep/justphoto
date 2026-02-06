@@ -3,6 +3,8 @@
 import Foundation
 import SwiftUI
 import GRDB
+import AVFoundation
+import Photos
 
 struct DebugToolsScreen: View {
     @EnvironmentObject private var promptCenter: PromptCenter
@@ -14,6 +16,11 @@ struct DebugToolsScreen: View {
     @State private var showAlert: Bool = false
     @State private var alertTitle: String = ""
     @State private var alertMessage: String = ""
+
+    @State private var m49LastPendingRelPath: String = ""
+    @State private var m4CleanupTestItemId: String = ""
+
+    @State private var showingViewerDebug: Bool = false
 
     var body: some View {
         List {
@@ -92,6 +99,10 @@ struct DebugToolsScreen: View {
                     promptCenter.show(makeTestL2BannerWithButton(key: "banner_test"))
                 }
 
+                Button("ShowTestBannerAutoDismiss") {
+                    promptCenter.show(makeTestL2BannerAutoDismiss(key: "banner_auto"))
+                }
+
                 Button("PrintDiagnosticsPath") {
                     do {
                         let logger = DiagnosticsLogger()
@@ -137,6 +148,136 @@ struct DebugToolsScreen: View {
                         alertMessage = error.localizedDescription
                         showAlert = true
                     }
+                }
+
+                Button("PrintCameraAuth") {
+                    let av = AVCaptureDevice.authorizationStatus(for: .video)
+                    let mapped = CameraAuthMapper.map(av)
+                    print("PrintCameraAuth:\(mapped.rawValue) av=\(String(describing: av))")
+
+                    statusText = "CameraAuth:\n\(mapped.rawValue)\n\nAVAuthorizationStatus:\n\(String(describing: av))"
+                    statusIsError = false
+                    alertTitle = "CameraAuth"
+                    alertMessage = mapped.rawValue
+                    showAlert = true
+                }
+
+                Button("SimulateWarmupDelay=0s") {
+                    WarmupDebugSettings.setSimulatedReadyDelaySec(0)
+                    let v = WarmupDebugSettings.simulatedReadyDelaySec()
+                    print("SimulateWarmupDelaySet:\(v)s")
+
+                    statusText = "SimulateWarmupDelay: \(v)s"
+                    statusIsError = false
+                    alertTitle = "Warmup delay"
+                    alertMessage = "\(v)s"
+                    showAlert = true
+                }
+
+                Button("SimulateWarmupDelay=4s") {
+                    WarmupDebugSettings.setSimulatedReadyDelaySec(4)
+                    let v = WarmupDebugSettings.simulatedReadyDelaySec()
+                    print("SimulateWarmupDelaySet:\(v)s")
+
+                    statusText = "SimulateWarmupDelay: \(v)s"
+                    statusIsError = false
+                    alertTitle = "Warmup delay"
+                    alertMessage = "\(v)s"
+                    showAlert = true
+                }
+
+                Button("SimulateWarmupDelay=9s (fail)") {
+                    WarmupDebugSettings.setSimulatedReadyDelaySec(9)
+                    let v = WarmupDebugSettings.simulatedReadyDelaySec()
+                    print("SimulateWarmupDelaySet:\(v)s")
+
+                    statusText = "SimulateWarmupDelay: \(v)s"
+                    statusIsError = false
+                    alertTitle = "Warmup delay"
+                    alertMessage = "\(v)s"
+                    showAlert = true
+                }
+
+                Button("PrintWarmupDelay") {
+                    let v = WarmupDebugSettings.simulatedReadyDelaySec()
+                    print("WarmupDelay:\(v)s")
+
+                    statusText = "WarmupDelay: \(v)s"
+                    statusIsError = false
+                    alertTitle = "Warmup delay"
+                    alertMessage = "\(v)s"
+                    showAlert = true
+                }
+
+                Button("SimulateCameraInitFailureReason=permission_denied") {
+                    CameraInitFailureDebugSettings.setSimulatedFailureReason(.permission_denied)
+                    let v = CameraInitFailureDebugSettings.simulatedFailureReason()?.rawValue ?? "<nil>"
+                    print("SimulateCameraInitFailureReasonSet:\(v)")
+
+                    statusText = "CameraInitFailureReason: \(v)"
+                    statusIsError = false
+                    alertTitle = "Camera init reason"
+                    alertMessage = v
+                    showAlert = true
+                }
+
+                Button("SimulateCameraInitFailureReason=camera_in_use") {
+                    CameraInitFailureDebugSettings.setSimulatedFailureReason(.camera_in_use)
+                    let v = CameraInitFailureDebugSettings.simulatedFailureReason()?.rawValue ?? "<nil>"
+                    print("SimulateCameraInitFailureReasonSet:\(v)")
+
+                    statusText = "CameraInitFailureReason: \(v)"
+                    statusIsError = false
+                    alertTitle = "Camera init reason"
+                    alertMessage = v
+                    showAlert = true
+                }
+
+                Button("SimulateCameraInitFailureReason=hardware_unavailable") {
+                    CameraInitFailureDebugSettings.setSimulatedFailureReason(.hardware_unavailable)
+                    let v = CameraInitFailureDebugSettings.simulatedFailureReason()?.rawValue ?? "<nil>"
+                    print("SimulateCameraInitFailureReasonSet:\(v)")
+
+                    statusText = "CameraInitFailureReason: \(v)"
+                    statusIsError = false
+                    alertTitle = "Camera init reason"
+                    alertMessage = v
+                    showAlert = true
+                }
+
+                Button("SimulateCameraInitFailureReason=unknown") {
+                    CameraInitFailureDebugSettings.setSimulatedFailureReason(.unknown)
+                    let v = CameraInitFailureDebugSettings.simulatedFailureReason()?.rawValue ?? "<nil>"
+                    print("SimulateCameraInitFailureReasonSet:\(v)")
+
+                    statusText = "CameraInitFailureReason: \(v)"
+                    statusIsError = false
+                    alertTitle = "Camera init reason"
+                    alertMessage = v
+                    showAlert = true
+                }
+
+                Button("ClearCameraInitFailureReason") {
+                    CameraInitFailureDebugSettings.setSimulatedFailureReason(nil)
+                    let v = CameraInitFailureDebugSettings.simulatedFailureReason()?.rawValue ?? "<nil>"
+                    print("SimulateCameraInitFailureReasonCleared")
+
+                    statusText = "CameraInitFailureReason: \(v)"
+                    statusIsError = false
+                    alertTitle = "Camera init reason"
+                    alertMessage = v
+                    showAlert = true
+                }
+
+                Button("PrintCameraInitFailureReason") {
+                    let v = CameraInitFailureDebugSettings.simulatedFailureReason()?.rawValue ?? "<nil>"
+                    print("CameraInitFailureReason:\(v)")
+
+                    statusText = "CameraInitFailureReason: \(v)"
+                    statusIsError = false
+                    alertTitle = "Camera init reason"
+                    alertMessage = v
+                    showAlert = true
                 }
 
                 Button("DBCheckTables") {
@@ -262,6 +403,587 @@ struct DebugToolsScreen: View {
                     }
                 }
 
+                Button("PrintCounts") {
+                    do {
+                        let counts = try SessionRepository.shared.currentWorksetCounter()
+                        let workset = counts?.worksetCount ?? -1
+                        let inflight = counts?.inFlightCount ?? -1
+                        print("Counts: workset_count=\(workset) in_flight_count=\(inflight)")
+
+                        statusText = "Counts\n\nworkset_count=\(workset)\nin_flight_count=\(inflight)"
+                        statusIsError = false
+                        alertTitle = "Counts"
+                        alertMessage = "workset_count=\(workset) in_flight_count=\(inflight)"
+                        showAlert = true
+                    } catch {
+                        statusText = "PrintCounts: FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "PrintCounts failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
+                Button("M4.7 ForceShutterTap (bypass UI)") {
+                    CaptureCoordinator.shared.shutterTapped()
+                    statusText = "M4.7 ForceShutterTap: sent"
+                    statusIsError = false
+                    alertTitle = "M4.7 shutter"
+                    alertMessage = "sent"
+                    showAlert = true
+                }
+
+                Button("M4.8 PrintLatestSessionItem") {
+                    do {
+                        if let s = try SessionRepository.shared.latestSessionItemForCurrentSession() {
+                            print("M4.8LatestItem: item_id=\(s.itemId) shot_seq=\(s.shotSeq) state=\(s.state.rawValue) liked=\(s.liked) asset_id=\(s.assetId ?? "<nil>") pending=\(s.pendingFileRelPath ?? "<nil>")")
+                            statusText = "M4.8LatestItem\n\nitem_id=\(s.itemId)\nshot_seq=\(s.shotSeq)\nstate=\(s.state.rawValue)\nliked=\(s.liked)\nasset_id=\(s.assetId ?? "<nil>")\npending=\(s.pendingFileRelPath ?? "<nil>")"
+                            statusIsError = false
+                            alertTitle = "M4.8 latest"
+                            alertMessage = "shot_seq=\(s.shotSeq)"
+                            showAlert = true
+                        } else {
+                            print("M4.8LatestItem: <nil>")
+                            statusText = "M4.8LatestItem\n\n<nil>"
+                            statusIsError = false
+                            alertTitle = "M4.8 latest"
+                            alertMessage = "<nil>"
+                            showAlert = true
+                        }
+                    } catch {
+                        statusText = "M4.8LatestItem: FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "M4.8 latest failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
+                Button("M4.15 MarkLatestWriteFailed") {
+                    do {
+                        guard let latest = try SessionRepository.shared.latestSessionItemForCurrentSession() else {
+                            statusText = "M4.15 MarkLatestWriteFailed: no latest item"
+                            statusIsError = true
+                            alertTitle = "M4.15"
+                            alertMessage = "no latest item"
+                            showAlert = true
+                            return
+                        }
+
+                        try SessionRepository.shared.markWriteFailed(itemId: latest.itemId)
+                        print("M4.15MarkedWriteFailed: item_id=\(latest.itemId) shot_seq=\(latest.shotSeq)")
+
+                        statusText = "M4.15 MarkLatestWriteFailed: OK\n\nitem_id=\(latest.itemId)\nshot_seq=\(latest.shotSeq)"
+                        statusIsError = false
+                        alertTitle = "M4.15 marked"
+                        alertMessage = "DBFlushed should appear"
+                        showAlert = true
+                    } catch {
+                        statusText = "M4.15 MarkLatestWriteFailed: FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "M4.15 failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
+                Button("M4.9 WriteDummyPending") {
+                    do {
+                        let itemId = UUID().uuidString
+                        let rel = PendingFileStore.shared.makeRelativePath(itemId: itemId, fileExtension: "bin")
+                        let payload = "dummy-\(itemId)".data(using: .utf8) ?? Data([0x64, 0x75, 0x6D, 0x6D, 0x79])
+                        let url = try PendingFileStore.shared.writeAtomic(data: payload, toRelativePath: rel)
+                        let exists = FileManager.default.fileExists(atPath: url.path)
+
+                        m49LastPendingRelPath = rel
+                        print("PendingFileWritten: rel_path=\(rel) url=\(url.path) bytes=\(payload.count) exists=\(exists)")
+
+                        statusText = "M4.9 WriteDummyPending: OK\n\nrel_path=\(rel)\nurl=\(url.path)\nbytes=\(payload.count)\nexists=\(exists)"
+                        statusIsError = false
+                        alertTitle = "M4.9 pending written"
+                        alertMessage = "exists=\(exists)"
+                        showAlert = true
+                    } catch {
+                        statusText = "M4.9 WriteDummyPending: FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "M4.9 pending failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
+                Button("M4.9 DeleteLastDummyPending") {
+                    do {
+                        guard !m49LastPendingRelPath.isEmpty else {
+                            statusText = "M4.9 DeleteLastDummyPending: no rel_path"
+                            statusIsError = true
+                            alertTitle = "M4.9 delete"
+                            alertMessage = "no rel_path"
+                            showAlert = true
+                            return
+                        }
+
+                        let deleted = try PendingFileStore.shared.delete(relativePath: m49LastPendingRelPath)
+                        print("PendingFileDeleted: rel_path=\(m49LastPendingRelPath) deleted=\(deleted)")
+
+                        statusText = "M4.9 DeleteLastDummyPending: OK\n\nrel_path=\(m49LastPendingRelPath)\ndeleted=\(deleted)"
+                        statusIsError = false
+                        alertTitle = "M4.9 pending deleted"
+                        alertMessage = "deleted=\(deleted)"
+                        showAlert = true
+                    } catch {
+                        statusText = "M4.9 DeleteLastDummyPending: FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "M4.9 delete failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
+                Button("M4.A CleanupTest: PrepareLatestItemFiles") {
+                    do {
+                        guard let latest = try SessionRepository.shared.latestSessionItemForCurrentSession() else {
+                            statusText = "CleanupTest: no latest item"
+                            statusIsError = true
+                            alertTitle = "CleanupTest"
+                            alertMessage = "no latest item"
+                            showAlert = true
+                            return
+                        }
+
+                        let itemId = latest.itemId
+                        let pendingRel = PendingFileStore.shared.makeRelativePath(itemId: itemId, fileExtension: "bin")
+                        let thumbRel = ThumbCacheStore.shared.makeRelativePath(itemId: itemId, fileExtension: "bin")
+
+                        let pendingData = "pending-\(itemId)".data(using: .utf8) ?? Data([0x70])
+                        let thumbData = "thumb-\(itemId)".data(using: .utf8) ?? Data([0x74])
+
+                        let pendingURL = try PendingFileStore.shared.writeAtomic(data: pendingData, toRelativePath: pendingRel)
+                        let thumbURL = try ThumbCacheStore.shared.writeAtomic(data: thumbData, toRelativePath: thumbRel)
+
+                        try SessionRepository.shared.updatePendingFileRelPath(itemId: itemId, relPath: pendingRel)
+                        try SessionRepository.shared.updateThumbCacheRelPath(itemId: itemId, relPath: thumbRel)
+
+                        let pendingExists = PendingFileStore.shared.fileExists(relativePath: pendingRel)
+                        let thumbExists = ThumbCacheStore.shared.fileExists(relativePath: thumbRel)
+
+                        m4CleanupTestItemId = itemId
+
+                        print("CleanupTestPrepared: item_id=\(itemId) pending=\(pendingURL.path) exists=\(pendingExists) thumb=\(thumbURL.path) exists=\(thumbExists)")
+
+                        statusText = "CleanupTestPrepared\n\nitem_id=\(itemId)\n\npending_rel=\(pendingRel)\npending_exists=\(pendingExists)\n\nthumb_rel=\(thumbRel)\nthumb_exists=\(thumbExists)"
+                        statusIsError = false
+                        alertTitle = "CleanupTest prepared"
+                        alertMessage = "pending/thumb files written"
+                        showAlert = true
+                    } catch {
+                        statusText = "CleanupTestPrepare FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "CleanupTest prepare failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
+                Button("M4.A CleanupTest: CleanupPreparedItem") {
+                    do {
+                        guard !m4CleanupTestItemId.isEmpty else {
+                            statusText = "CleanupTest: no prepared item_id"
+                            statusIsError = true
+                            alertTitle = "CleanupTest"
+                            alertMessage = "no item_id"
+                            showAlert = true
+                            return
+                        }
+
+                        let r = try SessionRepository.shared.cleanupItem(itemId: m4CleanupTestItemId)
+                        let pendingExists = (r.pendingFileRelPath.map { PendingFileStore.shared.fileExists(relativePath: $0) }) ?? false
+                        let thumbExists = (r.thumbCacheRelPath.map { ThumbCacheStore.shared.fileExists(relativePath: $0) }) ?? false
+
+                        print("CleanupTestResult: item_id=\(r.itemId) deleted=\(r.deletedRowCount) pending_rel=\(r.pendingFileRelPath ?? "<nil>") pending_deleted=\(r.pendingDeleted) pending_exists_after=\(pendingExists) thumb_rel=\(r.thumbCacheRelPath ?? "<nil>") thumb_deleted=\(r.thumbDeleted) thumb_exists_after=\(thumbExists)")
+
+                        statusText = "CleanupTestResult\n\nitem_id=\(r.itemId)\ndeleted_row=\(r.deletedRowCount)\n\npending_rel=\(r.pendingFileRelPath ?? "<nil>")\npending_deleted=\(r.pendingDeleted)\npending_exists_after=\(pendingExists)\n\nthumb_rel=\(r.thumbCacheRelPath ?? "<nil>")\nthumb_deleted=\(r.thumbDeleted)\nthumb_exists_after=\(thumbExists)"
+                        statusIsError = false
+                        alertTitle = "CleanupTest cleaned"
+                        alertMessage = "pending/thumb should be gone"
+                        showAlert = true
+                    } catch {
+                        statusText = "CleanupTestCleanup FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "CleanupTest cleanup failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
+                Button("M4.10 SimulateNoPhotoData (next shutter)") {
+                    CaptureCoordinator.shared.setSimulateNoPhotoDataOnce()
+                    print("M4.10SimulateNoPhotoDataOnce: armed")
+                    statusText = "M4.10 SimulateNoPhotoData: armed for next shutter"
+                    statusIsError = false
+                    alertTitle = "M4.10 armed"
+                    alertMessage = "next shutter will timeout"
+                    showAlert = true
+                }
+
+                Button("M4.13 ForceFirstFetchNilThenSuccess (next verification)") {
+                    CaptureCoordinator.shared.setForceFirstVerificationFetchNilOnce()
+                    print("M4.13ForceFirstVerificationFetchNilOnce: armed")
+                    statusText = "M4.13 ForceFirstFetchNilThenSuccess: armed for next verification"
+                    statusIsError = false
+                    alertTitle = "M4.13 armed"
+                    alertMessage = "next write_success will retry after 500ms"
+                    showAlert = true
+                }
+
+                Button("M4.19 TriggerCaptureFailed x3") {
+                    Task { @MainActor in
+                        for i in 1...3 {
+                            NotificationCenter.default.post(name: CaptureEvents.captureFailed, object: nil)
+                            print("M4.19PostCaptureFailed: #\(i)")
+                            try? await Task.sleep(nanoseconds: 200_000_000)
+                        }
+
+                        let c = await CaptureFailureTracker.shared.currentCount()
+                        print("M4.19Triggered: count_in_window=\(c)")
+                        statusText = "M4.19 Triggered\n\ncount_in_window=\(c)"
+                        statusIsError = false
+                        alertTitle = "M4.19 triggered"
+                        alertMessage = "count_in_window=\(c)"
+                        showAlert = true
+                    }
+                }
+
+                Button("M4.20 ThumbPipelineTest (latest item)") {
+                    Task {
+                        let latest = await MainActor.run { try? SessionRepository.shared.latestSessionItemForCurrentSession() }
+                        guard let itemId = latest?.itemId else {
+                            await MainActor.run {
+                                statusText = "M4.20 ThumbPipelineTest: no latest item"
+                                statusIsError = true
+                                alertTitle = "M4.20"
+                                alertMessage = "no latest item"
+                                showAlert = true
+                            }
+                            return
+                        }
+
+                        await ThumbnailPipeline.shared.requestThumbnail(itemId: itemId)
+                        await MainActor.run {
+                            statusText = "M4.20 ThumbPipelineTest: requested\n\nitem_id=\(itemId)"
+                            statusIsError = false
+                            alertTitle = "M4.20"
+                            alertMessage = "requested"
+                            showAlert = true
+                        }
+                    }
+                }
+
+                Button("M4.21 DelayThumbnail=6s") {
+                    Task {
+                        await ThumbnailPipeline.shared.setDebugDelay(seconds: 6.0)
+                        await MainActor.run {
+                            statusText = "M4.21 DelayThumbnail: set to 6s"
+                            statusIsError = false
+                            alertTitle = "M4.21"
+                            alertMessage = "delay=6s"
+                            showAlert = true
+                        }
+                    }
+                }
+
+                Button("M4.21 DelayThumbnail=default") {
+                    Task {
+                        await ThumbnailPipeline.shared.setDebugDelay(seconds: nil)
+                        await MainActor.run {
+                            statusText = "M4.21 DelayThumbnail: reset to default"
+                            statusIsError = false
+                            alertTitle = "M4.21"
+                            alertMessage = "delay=default"
+                            showAlert = true
+                        }
+                    }
+                }
+
+                Button("M4.22 DelayThumbnail=6s (self-heal demo)") {
+                    Task {
+                        await ThumbnailPipeline.shared.setDebugDelay(seconds: 6.0)
+                        await MainActor.run {
+                            statusText = "M4.22 self-heal demo\n\nDelayThumbnail=6s"
+                            statusIsError = false
+                            alertTitle = "M4.22"
+                            alertMessage = "delay=6s"
+                            showAlert = true
+                        }
+                    }
+                }
+
+                Button("M4.23 DelayThumbnail=35s") {
+                    Task {
+                        await ThumbnailPipeline.shared.setDebugDelay(seconds: 35.0)
+                        await MainActor.run {
+                            statusText = "M4.23 DelayThumbnail: set to 35s"
+                            statusIsError = false
+                            alertTitle = "M4.23"
+                            alertMessage = "delay=35s"
+                            showAlert = true
+                        }
+                    }
+                }
+
+                Button("M4.23 OpenViewer") {
+                    showingViewerDebug = true
+                }
+
+                Button("M4.25 ForceAlbumAddFailOnce") {
+                    Task {
+                        await AlbumArchiver.shared.setDebugForceFailOnce()
+                        await MainActor.run {
+                            statusText = "M4.25 ForceAlbumAddFailOnce: armed"
+                            statusIsError = false
+                            alertTitle = "M4.25"
+                            alertMessage = "next album add will fail"
+                            showAlert = true
+                        }
+                    }
+                }
+
+                Button("M4.27 ForceAlbumAddFailTimes=3") {
+                    Task {
+                        await AlbumArchiver.shared.setDebugForceFail(times: 3)
+                        await MainActor.run {
+                            statusText = "M4.27 ForceAlbumAddFailTimes: set to 3"
+                            statusIsError = false
+                            alertTitle = "M4.27"
+                            alertMessage = "next 3 album adds will fail"
+                            showAlert = true
+                        }
+                    }
+                }
+
+                Button("M4.25 PrintGateFlag (album_add_failed_banner)") {
+                    do {
+                        let key = PromptGateFlagKeys.sessionOnce(promptKey: "album_add_failed_banner")
+                        let v = try SessionRepository.shared.sessionFlagBool(key)
+                        print("M4.25GateFlag: \(key)=\(v)")
+                        statusText = "M4.25GateFlag\n\n\(key)=\(v)"
+                        statusIsError = false
+                        alertTitle = "M4.25 gate"
+                        alertMessage = v ? "true (will suppress banner)" : "false"
+                        showAlert = true
+                    } catch {
+                        statusText = "M4.25GateFlag FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "M4.25 gate failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
+                Button("M4.25 ClearGateFlag (album_add_failed_banner)") {
+                    do {
+                        let key = PromptGateFlagKeys.sessionOnce(promptKey: "album_add_failed_banner")
+                        try SessionRepository.shared.setSessionFlagBool(key, value: false)
+                        print("M4.25GateFlagCleared: \(key)=false")
+                        statusText = "M4.25GateFlagCleared\n\n\(key)=false"
+                        statusIsError = false
+                        alertTitle = "M4.25 gate cleared"
+                        alertMessage = "banner can show once again in this session"
+                        showAlert = true
+                    } catch {
+                        statusText = "M4.25GateClear FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "M4.25 gate clear failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
+                Button("ListSessionItemStates") {
+                    let values = SessionItemState.allCases.map { $0.rawValue }
+                    print("SessionItemStates: \(values)")
+                    statusText = "SessionItemStates\n\n" + values.joined(separator: "\n")
+                    statusIsError = false
+                    alertTitle = "SessionItemStates"
+                    alertMessage = "count=\(values.count)"
+                    showAlert = true
+                }
+
+                Button("M4.14 PrintWriteFailReasons") {
+                    let rows = WriteFailReason.allCases.map { r in
+                        return "\(r.rawValue) -> \(r.reasonTextZh)"
+                    }
+
+                    let samples = [
+                        "nil => \(WriteFailReason.writeFailedMessage(reason: nil))",
+                    ] + WriteFailReason.allCases.map {
+                        "\($0.rawValue) => \(WriteFailReason.writeFailedMessage(reason: $0))"
+                    }
+
+                    let msg = (rows + [""] + samples).joined(separator: "\n")
+                    print("WriteFailReasons\n\n\(msg)")
+
+                    statusText = "M4.14 WriteFailReasons\n\n" + msg
+                    statusIsError = false
+                    alertTitle = "M4.14 write_failed reasons"
+                    alertMessage = WriteFailReason.allCases.map { $0.reasonTextZh }.joined(separator: "\n")
+                    showAlert = true
+                }
+
+                Button("M4.3 NewSession + SeedWorksetThumbReady x14") {
+                    do {
+                        let id = try SessionRepository.shared.createNewSession(scene: "cafe")
+                        let inserted = try SessionRepository.shared.insertWorksetItemsForCurrentSession(count: 14, state: .finalized)
+                        let counts = try SessionRepository.shared.currentWorksetCounter()
+                        let workset = counts?.worksetCount ?? -1
+                        let inflight = counts?.inFlightCount ?? -1
+
+                        print("M4.3Seed14: session_id=\(id) inserted=\(inserted) workset_count=\(workset) in_flight_count=\(inflight)")
+
+                        statusText = "M4.3Seed14: OK\n\nSessionId:\n\(id)\n\ninserted=\(inserted)\nworkset_count=\(workset)\nin_flight_count=\(inflight)"
+                        statusIsError = false
+                        alertTitle = "M4.3 seeded 14"
+                        alertMessage = "workset_count=\(workset)"
+                        showAlert = true
+                    } catch {
+                        statusText = "M4.3Seed14: FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "M4.3Seed14 failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
+                Button("M4.3 InsertWorksetThumbReady x1") {
+                    do {
+                        let inserted = try SessionRepository.shared.insertWorksetItemsForCurrentSession(count: 1, state: .finalized)
+                        let counts = try SessionRepository.shared.currentWorksetCounter()
+                        let workset = counts?.worksetCount ?? -1
+
+                        print("M4.3Insert1: inserted=\(inserted) workset_count=\(workset)")
+
+                        statusText = "M4.3Insert1: OK\n\ninserted=\(inserted)\nworkset_count=\(workset)"
+                        statusIsError = false
+                        alertTitle = "M4.3 inserted 1"
+                        alertMessage = "workset_count=\(workset)"
+                        showAlert = true
+                    } catch {
+                        statusText = "M4.3Insert1: FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "M4.3Insert1 failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
+                Button("M4.3 PrintGateFlag (workset_15_count_banner)") {
+                    do {
+                        let k = PromptGateFlagKeys.sessionOnce(promptKey: "workset_15_count_banner")
+                        let v = try SessionRepository.shared.sessionFlagBool(k)
+                        print("M4.3GateFlag: \(k)=\(v)")
+
+                        statusText = "M4.3GateFlag\n\n\(k)=\(v)"
+                        statusIsError = false
+                        alertTitle = "M4.3 gate flag"
+                        alertMessage = "\(v)"
+                        showAlert = true
+                    } catch {
+                        statusText = "M4.3GateFlag: FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "M4.3GateFlag failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
+                Button("M4.3 ClearGateFlag (workset_15_count_banner)") {
+                    do {
+                        let k = PromptGateFlagKeys.sessionOnce(promptKey: "workset_15_count_banner")
+                        try SessionRepository.shared.setSessionFlagBool(k, value: false)
+                        let v = try SessionRepository.shared.sessionFlagBool(k)
+                        print("M4.3GateFlagCleared: \(k)=\(v)")
+
+                        statusText = "M4.3GateFlagCleared\n\n\(k)=\(v)"
+                        statusIsError = false
+                        alertTitle = "M4.3 gate flag cleared"
+                        alertMessage = "\(v)"
+                        showAlert = true
+                    } catch {
+                        statusText = "M4.3GateFlagCleared: FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "M4.3GateFlagCleared failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
+                Button("M4.4 NewSession + SeedWorksetThumbReady x19") {
+                    do {
+                        let id = try SessionRepository.shared.createNewSession(scene: "cafe")
+                        let inserted = try SessionRepository.shared.insertWorksetItemsForCurrentSession(count: 19, state: .finalized)
+                        let counts = try SessionRepository.shared.currentWorksetCounter()
+                        let workset = counts?.worksetCount ?? -1
+                        let inflight = counts?.inFlightCount ?? -1
+
+                        print("M4.4Seed19: session_id=\(id) inserted=\(inserted) workset_count=\(workset) in_flight_count=\(inflight)")
+
+                        statusText = "M4.4Seed19: OK\n\nSessionId:\n\(id)\n\ninserted=\(inserted)\nworkset_count=\(workset)\nin_flight_count=\(inflight)"
+                        statusIsError = false
+                        alertTitle = "M4.4 seeded 19"
+                        alertMessage = "workset_count=\(workset)"
+                        showAlert = true
+                    } catch {
+                        statusText = "M4.4Seed19: FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "M4.4Seed19 failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
+                Button("M4.4 InsertWorksetThumbReady x1") {
+                    do {
+                        let inserted = try SessionRepository.shared.insertWorksetItemsForCurrentSession(count: 1, state: .finalized)
+                        let counts = try SessionRepository.shared.currentWorksetCounter()
+                        let workset = counts?.worksetCount ?? -1
+
+                        print("M4.4Insert1: inserted=\(inserted) workset_count=\(workset)")
+
+                        statusText = "M4.4Insert1: OK\n\ninserted=\(inserted)\nworkset_count=\(workset)"
+                        statusIsError = false
+                        alertTitle = "M4.4 inserted 1"
+                        alertMessage = "workset_count=\(workset)"
+                        showAlert = true
+                    } catch {
+                        statusText = "M4.4Insert1: FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "M4.4Insert1 failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
+                Button("M4.4 LikeLatest x3") {
+                    do {
+                        let updated = try SessionRepository.shared.setLikedForLatestItemsForCurrentSession(count: 3, liked: true)
+                        let counts = try SessionRepository.shared.currentWorksetCounter()
+                        let workset = counts?.worksetCount ?? -1
+                        print("M4.4LikeLatest3: updated=\(updated) workset_count=\(workset)")
+
+                        statusText = "M4.4LikeLatest3: OK\n\nupdated=\(updated)\nworkset_count=\(workset)"
+                        statusIsError = false
+                        alertTitle = "M4.4 liked latest"
+                        alertMessage = "updated=\(updated)"
+                        showAlert = true
+                    } catch {
+                        statusText = "M4.4LikeLatest3: FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "M4.4LikeLatest3 failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
                 Button("CreateWriteFailedItem") {
                     do {
                         let itemId = try SessionRepository.shared.insertWriteFailedItemAndFlush()
@@ -282,6 +1004,10 @@ struct DebugToolsScreen: View {
                         showAlert = true
                     }
                 }
+                // This action is frequently used as an emergency unblock during dev.
+                // Force-enable it even if a parent view accidentally disables interaction.
+                .disabled(false)
+                .tint(.blue)
 
                 Button("CountWriteFailedItems") {
                     do {
@@ -297,6 +1023,27 @@ struct DebugToolsScreen: View {
                         statusText = "CountWriteFailedItems: FAILED\n\(error.localizedDescription)"
                         statusIsError = true
                         alertTitle = "CountWriteFailedItems failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
+                Button("ClearWriteFailedItems") {
+                    do {
+                        let deleted = try SessionRepository.shared.deleteWriteFailedItemsForCurrentSession()
+                        let count = try SessionRepository.shared.countWriteFailedItems()
+                        print("WriteFailedItemsDeleted:\(deleted)")
+                        print("WriteFailedItemCount:\(count)")
+
+                        statusText = "ClearWriteFailedItems: OK\n\ndeleted=\(deleted)\nremaining=\(count)"
+                        statusIsError = false
+                        alertTitle = "write_failed cleared"
+                        alertMessage = "deleted=\(deleted) remaining=\(count)"
+                        showAlert = true
+                    } catch {
+                        statusText = "ClearWriteFailedItems: FAILED\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "ClearWriteFailedItems failed"
                         alertMessage = error.localizedDescription
                         showAlert = true
                     }
@@ -493,6 +1240,28 @@ struct DebugToolsScreen: View {
                     .disabled(isRunning)
                 }
 
+                Section("M4.29 Phantom Asset Healer") {
+                    Button("Inject + Heal Phantom Asset") {
+                        guard !isRunning else { return }
+                        isRunning = true
+                        statusText = "M4.29 Inject+Heal: running..."
+                        statusIsError = false
+
+                        Task {
+                            let result = await m429_injectAndHealPhantomAsset()
+                            await MainActor.run {
+                                isRunning = false
+                                statusText = result.statusText
+                                statusIsError = !result.ok
+                                alertTitle = result.ok ? "M4.29 ok" : "M4.29 failed"
+                                alertMessage = result.alertMessage
+                                showAlert = true
+                            }
+                        }
+                    }
+                    .disabled(isRunning)
+                }
+
                 if !statusText.isEmpty {
                     Text(statusText)
                         .font(.footnote)
@@ -506,6 +1275,10 @@ struct DebugToolsScreen: View {
         }
         .navigationTitle("Debug Tools")
         .promptHost()
+        .sheet(isPresented: $showingViewerDebug) {
+            ViewerScreen()
+                .environment(\.promptHostInstalled, false)
+        }
         .alert(alertTitle, isPresented: $showAlert) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -557,6 +1330,57 @@ struct DebugToolsScreen: View {
                 statusText: "WriteTestDiagnostic: FAILED (encode error)",
                 alertMessage: "Encode/parse failed: \(error.localizedDescription)"
             )
+        }
+    }
+
+    private func m429_injectAndHealPhantomAsset() async -> (ok: Bool, statusText: String, alertMessage: String) {
+        do {
+            // Ensure Photo Library read access so the healer can evaluate phantom-ness.
+            let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+            if status == .notDetermined {
+                _ = await withCheckedContinuation { (c: CheckedContinuation<PHAuthorizationStatus, Never>) in
+                    PHPhotoLibrary.requestAuthorization(for: .readWrite) { s in
+                        c.resume(returning: s)
+                    }
+                }
+            }
+
+            let item: SessionRepository.SessionItemSummary = try await MainActor.run {
+                if (try SessionRepository.shared.currentSessionId()) == nil {
+                    _ = try SessionRepository.shared.createNewSession(scene: "cafe")
+                }
+
+                let s = try SessionRepository.shared.insertOptimisticCapturedPreviewItemAndFlush()
+                let fakeAssetId = "debug_phantom_asset_" + UUID().uuidString
+                try SessionRepository.shared.markWriteSuccess(itemId: s.itemId, assetId: fakeAssetId)
+                try SessionRepository.shared.updateAlbumState(itemId: s.itemId, state: .failed)
+                return try SessionRepository.shared.sessionItemSummary(itemId: s.itemId) ?? s
+            }
+
+            let assetId = item.assetId ?? ""
+            guard !assetId.isEmpty else {
+                return (false, "M4.29 Inject+Heal: FAILED\nmissing asset_id", "Missing asset_id")
+            }
+
+            let report = await PhantomAssetHealer.shared.healIfNeeded(
+                itemId: item.itemId,
+                assetId: assetId,
+                source: "debug_tools"
+            )
+
+            let stillExists: Bool = await MainActor.run {
+                (try? SessionRepository.shared.sessionItemSummary(itemId: item.itemId)) != nil
+            }
+
+            if let report {
+                let txt = "M4.29 Inject+Heal: OK\nitem_id=\(report.itemId)\nauth=\(report.authSnapshot)\naction=\(report.healAction.rawValue)\npruned=\(report.wasPruned ? "true" : "false")\nstill_exists=\(stillExists ? "true" : "false")\nasset_id_hash=\(report.assetIdHash)"
+                return (true, txt, "Phantom asset healed (or attempted).")
+            }
+
+            let txt = "M4.29 Inject+Heal: SKIPPED\nNo phantom detected (or not authorized/limited).\nitem_id=\(item.itemId)\nstill_exists=\(stillExists ? "true" : "false")"
+            return (true, txt, "No heal performed.")
+        } catch {
+            return (false, "M4.29 Inject+Heal: FAILED\n\(error.localizedDescription)", error.localizedDescription)
         }
     }
 
@@ -893,6 +1717,35 @@ struct DebugToolsScreen: View {
             emittedAt: Date()
         )
     }
+
+    private func makeTestL2BannerAutoDismiss(key: String) -> Prompt {
+        Prompt(
+            key: key,
+            level: .L2,
+            surface: .sheetBannerTop,
+            priority: 40,
+            blocksShutter: false,
+            isClosable: true,
+            autoDismissSeconds: nil,
+            gate: .none,
+            title: "Banner auto-dismiss",
+            message: "This banner auto-dismisses when it has no primary button.",
+            primaryActionId: nil,
+            primaryTitle: nil,
+            secondaryActionId: nil,
+            secondaryTitle: nil,
+            tertiaryActionId: nil,
+            tertiaryTitle: nil,
+            throttle: .init(
+                perKeyMinIntervalSec: 0,
+                globalWindowSec: 0,
+                globalMaxCountInWindow: 0,
+                suppressAfterDismissSec: 0
+            ),
+            payload: [:],
+            emittedAt: Date()
+        )
+    }
 }
 
 private struct PromptDebugModal: View {
@@ -945,8 +1798,7 @@ private struct PromptDebugModal: View {
 
             ForEach(prompt.actions) { action in
                 Button(action.title) {
-                    print("PromptActionTapped:\(prompt.key) action=\(action.id)")
-                    promptCenter.dismissModal(reason: .action)
+                    promptCenter.actionTapped(prompt: prompt, actionId: action.id)
                 }
                 .buttonStyle(.borderedProminent)
             }

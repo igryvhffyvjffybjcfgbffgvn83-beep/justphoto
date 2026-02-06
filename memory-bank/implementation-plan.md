@@ -748,3 +748,10 @@ F.1 Dependency audit
 F.2 PRD QA checklist run (Section 10)
 - Do: Execute PRD QA checklist end-to-end and record results locally (notes can be stored in a local file).
 - Verify: Export diagnostics logs and confirm key flows are represented (camera init, save states, prompts, withRef, ODR auto retry).
+
+---
+
+## Optimization Todo (Follow-ups)
+
+- 4E (Tracker内存态): make `CaptureFailureTracker` resilient across background/terminate (persist rolling window + last trigger time), so abnormal prompts don't reset unexpectedly.
+- 4D (Error Reason): plumb PhotoKit write failures into `WriteFailReason` (store reason payload/text on `session_items`, show exact reason in Viewer/Camera prompts) instead of a generic message.

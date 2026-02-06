@@ -1,12 +1,12 @@
 import Foundation
 
-enum PromptLevel: String, Codable, Sendable {
+nonisolated enum PromptLevel: String, Codable, Sendable {
     case L1
     case L2
     case L3
 }
 
-enum PromptSurface: String, Codable, Sendable {
+nonisolated enum PromptSurface: String, Codable, Sendable {
     case cameraToastBottom
     case cameraBannerTop
     case cameraModalCenter
@@ -16,42 +16,67 @@ enum PromptSurface: String, Codable, Sendable {
     case sheetModalCenter
 }
 
-enum WriteFailReason: String, Codable, Sendable {
+nonisolated enum WriteFailReason: String, Codable, Sendable, CaseIterable {
     case no_permission
     case no_space
     case photo_lib_unavailable
     case system_pressure
+
+    nonisolated var reasonTextZh: String {
+        switch self {
+        case .no_permission:
+            return "没拿到相册权限"
+        case .no_space:
+            return "手机空间不够"
+        case .photo_lib_unavailable:
+            return "系统相册暂时不可用"
+        case .system_pressure:
+            return "系统太忙"
+        }
+    }
+
+    // PRD A.10 parentheses rule.
+    nonisolated static func writeFailedMessage(reasonText: String?) -> String {
+        let base = "未保存到系统相册"
+        let trimmed = (reasonText ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return base }
+        return "\(base)（\(trimmed)）"
+    }
+
+    nonisolated static func writeFailedMessage(reason: WriteFailReason?) -> String {
+        writeFailedMessage(reasonText: reason?.reasonTextZh)
+    }
 }
 
-enum RefRejectReason: String, Codable, Sendable {
+nonisolated enum RefRejectReason: String, Codable, Sendable {
     case multi_person
     case face_too_small
     case eyes_not_visible
     case upper_body_incomplete
 }
 
-enum FrequencyGate: String, Codable, Sendable {
+nonisolated enum FrequencyGate: String, Codable, Sendable {
     case none
     case sessionOnce
     case installOnce
     case stateOnly
 }
 
-enum DismissReason: String, Codable, Sendable {
+nonisolated enum DismissReason: String, Codable, Sendable {
     case auto
     case close
     case action
     case preempt
 }
 
-struct ThrottleRule: Codable, Sendable, Equatable {
+nonisolated struct ThrottleRule: Codable, Sendable, Equatable {
     var perKeyMinIntervalSec: Double
     var globalWindowSec: Double
     var globalMaxCountInWindow: Int
     var suppressAfterDismissSec: Double
 }
 
-enum PromptPayloadValue: Codable, Sendable, Equatable {
+nonisolated enum PromptPayloadValue: Codable, Sendable, Equatable {
     case string(String)
     case int(Int)
     case double(Double)
@@ -106,12 +131,12 @@ enum PromptPayloadValue: Codable, Sendable, Equatable {
     }
 }
 
-struct PromptAction: Codable, Sendable, Equatable, Identifiable {
+nonisolated struct PromptAction: Codable, Sendable, Equatable, Identifiable {
     var id: String
     var title: String
 }
 
-struct Prompt: Codable, Sendable, Equatable, Identifiable {
+nonisolated struct Prompt: Codable, Sendable, Equatable, Identifiable {
     // NOTE: Field list is intentionally aligned with PRD Appendix A.2.2.
     var key: String
     var level: PromptLevel
@@ -129,13 +154,15 @@ struct Prompt: Codable, Sendable, Equatable, Identifiable {
     var secondaryTitle: String?
     var tertiaryActionId: String?
     var tertiaryTitle: String?
+    var quaternaryActionId: String? = nil
+    var quaternaryTitle: String? = nil
     var throttle: ThrottleRule
     var payload: [String: PromptPayloadValue]
     var emittedAt: Date
 
-    var id: String { "\(key)|\(Int(emittedAt.timeIntervalSince1970 * 1000))" }
+    nonisolated var id: String { "\(key)|\(Int(emittedAt.timeIntervalSince1970 * 1000))" }
 
-    var actions: [PromptAction] {
+    nonisolated var actions: [PromptAction] {
         var out: [PromptAction] = []
         if let id = primaryActionId, let title = primaryTitle {
             out.append(.init(id: id, title: title))
@@ -144,6 +171,9 @@ struct Prompt: Codable, Sendable, Equatable, Identifiable {
             out.append(.init(id: id, title: title))
         }
         if let id = tertiaryActionId, let title = tertiaryTitle {
+            out.append(.init(id: id, title: title))
+        }
+        if let id = quaternaryActionId, let title = quaternaryTitle {
             out.append(.init(id: id, title: title))
         }
         return out

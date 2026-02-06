@@ -1,17 +1,22 @@
 import Foundation
 
 final class DiagnosticsLogger: Sendable {
-    init() {}
+    nonisolated init() {}
 
-    private static let dayStampFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.timeZone = TimeZone(secondsFromGMT: 0)
-        f.dateFormat = "yyyy-MM-dd"
-        return f
-    }()
+    // Avoid DateFormatter (not thread-safe) because this type is used from
+    // non-main executors (Swift 6 default isolation is MainActor).
+    private nonisolated static func dayStampUTC(_ now: Date) -> String {
+        let tz = TimeZone(secondsFromGMT: 0) ?? .gmt
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = tz
+        let c = cal.dateComponents([.year, .month, .day], from: now)
+        let y = c.year ?? 1970
+        let m = c.month ?? 1
+        let d = c.day ?? 1
+        return String(format: "%04d-%02d-%02d", y, m, d)
+    }
 
-    func encodeJSONLine(_ event: DiagnosticsEvent) throws -> String {
+    nonisolated func encodeJSONLine(_ event: DiagnosticsEvent) throws -> String {
         let data = try JSONEncoder().encode(event)
         guard let line = String(data: data, encoding: .utf8) else {
             throw NSError(domain: "DiagnosticsLogger", code: 1)
@@ -19,7 +24,7 @@ final class DiagnosticsLogger: Sendable {
         return line
     }
 
-    func diagnosticsDirectoryURL() throws -> URL {
+    nonisolated func diagnosticsDirectoryURL() throws -> URL {
         let base = try FileManager.default.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,
@@ -34,19 +39,19 @@ final class DiagnosticsLogger: Sendable {
         return dir
     }
 
-    func currentLogFileURL(now: Date = .init()) throws -> URL {
+    nonisolated func currentLogFileURL(now: Date = .init()) throws -> URL {
         let dir = try diagnosticsDirectoryURL()
-        let day = Self.dayStampFormatter.string(from: now)
+        let day = Self.dayStampUTC(now)
         return dir.appendingPathComponent("diagnostics-\(day).jsonl", isDirectory: false)
     }
 
-    func fileSizeBytes(at url: URL) -> Int64 {
+    nonisolated func fileSizeBytes(at url: URL) -> Int64 {
         let values = try? url.resourceValues(forKeys: [.fileSizeKey])
         return Int64(values?.fileSize ?? 0)
     }
 
     @discardableResult
-    func appendJSONLine(_ jsonLine: String) throws -> (fileURL: URL, bytesBefore: Int64, bytesAfter: Int64) {
+    nonisolated func appendJSONLine(_ jsonLine: String) throws -> (fileURL: URL, bytesBefore: Int64, bytesAfter: Int64) {
         let url = try currentLogFileURL()
         let before = fileSizeBytes(at: url)
 
@@ -68,12 +73,12 @@ final class DiagnosticsLogger: Sendable {
 }
 
 extension DiagnosticsLogger {
-    private static func nowMs(now: Date) -> Int64 {
+    private nonisolated static func nowMs(now: Date) -> Int64 {
         Int64(now.timeIntervalSince1970 * 1000)
     }
 
     @discardableResult
-    private func appendEvent(_ event: DiagnosticsEvent) throws -> (fileURL: URL, jsonLine: String) {
+    private nonisolated func appendEvent(_ event: DiagnosticsEvent) throws -> (fileURL: URL, jsonLine: String) {
         let line = try encodeJSONLine(event)
         let result = try appendJSONLine(line)
         return (fileURL: result.fileURL, jsonLine: line)
@@ -160,7 +165,7 @@ extension DiagnosticsLogger {
     }
 
     @discardableResult
-    func logPhantomAssetDetected(
+    nonisolated func logPhantomAssetDetected(
         sessionId: String,
         scene: String,
         assetIdHash: String,
@@ -203,5 +208,107 @@ extension DiagnosticsLogger {
             ]
         )
         return try appendEvent(e)
+    }
+}
+
+// MARK: - A.12 Prompt event logging (local-only)
+
+actor DiagnosticsEventWriter {
+    static let shared = DiagnosticsEventWriter()
+
+    private let logger = DiagnosticsLogger()
+
+    private init() {}
+
+    private static func nowMs(now: Date) -> Int64 {
+        Int64(now.timeIntervalSince1970 * 1000)
+    }
+
+    private static func encodePromptPayload(_ payload: [String: PromptPayloadValue]) -> String {
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            let data = try encoder.encode(payload)
+            return String(decoding: data, as: UTF8.self)
+        } catch {
+            // Best-effort: keep logs writable even if payload encoding fails.
+            return "{}"
+        }
+    }
+
+    private static func promptRequiredFields(_ prompt: Prompt) -> [String: String] {
+        var out: [String: String] = [
+            "key": prompt.key,
+            "level": prompt.level.rawValue,
+            "surface": prompt.surface.rawValue,
+            "priority": String(prompt.priority),
+            "blocksShutter": prompt.blocksShutter ? "true" : "false",
+            "emittedAt": String(Int64(prompt.emittedAt.timeIntervalSince1970 * 1000)),
+            "payload": encodePromptPayload(prompt.payload)
+        ]
+
+        // Optional but useful for QA/debugging.
+        out["prompt_id"] = prompt.id
+        return out
+    }
+
+    private func append(event: DiagnosticsEvent) {
+        do {
+            let line = try logger.encodeJSONLine(event)
+            _ = try logger.appendJSONLine(line)
+        } catch {
+            print("DiagnosticsAppendFAILED: \(event.event): \(error)")
+        }
+    }
+
+    func logPromptShown(sessionId: String, scene: String, prompt: Prompt, now: Date = .init()) {
+        let e = DiagnosticsEvent(
+            ts_ms: Self.nowMs(now: now),
+            session_id: sessionId,
+            event: "prompt_shown",
+            scene: scene,
+            payload: Self.promptRequiredFields(prompt)
+        )
+        append(event: e)
+    }
+
+    func logPromptDismissed(
+        sessionId: String,
+        scene: String,
+        prompt: Prompt,
+        dismissReason: DismissReason,
+        now: Date = .init()
+    ) {
+        var payload = Self.promptRequiredFields(prompt)
+        payload["dismissReason"] = dismissReason.rawValue
+
+        let e = DiagnosticsEvent(
+            ts_ms: Self.nowMs(now: now),
+            session_id: sessionId,
+            event: "prompt_dismissed",
+            scene: scene,
+            payload: payload
+        )
+        append(event: e)
+    }
+
+    func logPromptActionTapped(
+        sessionId: String,
+        scene: String,
+        prompt: Prompt,
+        actionId: String,
+        now: Date = .init()
+    ) {
+        var payload = Self.promptRequiredFields(prompt)
+        payload["actionId"] = actionId
+
+        let e = DiagnosticsEvent(
+            ts_ms: Self.nowMs(now: now),
+            session_id: sessionId,
+            event: "prompt_action_tapped",
+            scene: scene,
+            payload: payload
+        )
+        append(event: e)
     }
 }

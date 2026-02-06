@@ -48,79 +48,83 @@ Rule: Each checkpoint is either `[ ]` (not done) or `[x]` (done). Update immedia
 - [x] M2.3 Implement L1 Toast slot
 - [x] M2.4 Implement L2 Banner slot
 - [x] M2.5 Implement L3 Modal slot
-- [ ] M2.6 Implement VoiceOver timing switch (VOICEOVER_*)
-- [ ] M2.7 Log prompt events locally (A.12)
+- [x] M2.6 Implement VoiceOver timing switch (VOICEOVER_*)
+- [x] M2.7 Log prompt events locally (A.12)
 
 ## Milestone 3 — Camera Permission State Machine + Warmup Timeouts (P0)
 
-- [ ] M3.1 Create CameraAuth module (AVAuthorizationStatus mapping)
-- [ ] M3.2 Implement not_determined pre-prompt (PRD 4.1.2)
-- [ ] M3.3 Wire Continue to trigger system camera permission dialog
-- [ ] M3.4 Implement denied/restricted UI
-- [ ] M3.5 Create WarmupState tracker (3s upgrade, 8s fail)
-- [ ] M3.6 Define CameraInitFailureReason enum and mapping
-- [ ] M3.7 Implement “Retry camera init”
+- [x] M3.1 Create CameraAuth module (AVAuthorizationStatus mapping)
+- [x] M3.2 Implement not_determined pre-prompt (PRD 4.1.2)
+- [x] M3.3 Wire Continue to trigger system camera permission dialog
+- [x] M3.4 Implement denied/restricted UI
+- [x] M3.5 Create WarmupState tracker (3s upgrade, 8s fail)
+- [x] M3.6 Define CameraInitFailureReason enum and mapping
+- [x] M3.7 Implement “Retry camera init”
 
 ## Milestone 4 — Capture + Save State Machine (P0 Data Safety) + Pending Recovery
 
 ### 4A. Rules & Counters
 
-- [ ] M4.1 Create WorksetCounter utility
-- [ ] M4.2 Create SessionRuleGate module (single source for shutter enable)
-- [ ] M4.3 Implement 15-count banner gate (14->15, sessionOnce)
-- [ ] M4.4 Implement 20-limit modal + shutter disabled persists after cancel
+- [x] M4.1 Create WorksetCounter utility
+- [x] M4.2 Create SessionRuleGate module (single source for shutter enable)
+- [x] M4.3 Implement 15-count banner gate (14->15, sessionOnce)
+- [x] M4.4 Implement 20-limit modal + shutter disabled persists after cancel
 
 ### 4B. Capture pipeline (optimistic -> pending file -> PhotoKit write)
 
-- [ ] M4.5 Create CaptureCoordinator file (single pipeline owner)
-- [ ] M4.6 Create SessionItemState definition aligned with PRD
-- [ ] M4.7 Implement shutter tap gate checks (no capture when blocked)
-- [ ] M4.8 Create optimistic item immediately
-- [ ] M4.9 Create PendingFileStore module (Application Support/pending)
-- [ ] M4.10 Write photo data to pending within 2s or convert to capture_failed
-- [ ] M4.11 Start PhotoKit write only after pending file exists
+- [x] M4.5 Create CaptureCoordinator file (single pipeline owner)
+- [x] M4.6 Create SessionItemState definition aligned with PRD
+- [x] M4.7 Implement shutter tap gate checks (no capture when blocked)
+- [x] M4.8 Create optimistic item immediately
+- [x] M4.9 Create PendingFileStore module (Application Support/pending)
+- [x] M4.10 Write photo data to pending within 2s or convert to capture_failed
+- [x] M4.11 Start PhotoKit write only after pending file exists
+
+Notes / Known limitations (track for later milestones):
+- Pending file currently writes a tiny placeholder PNG (not real camera bytes yet).
+- `write_failed(reason)` is not wired yet: PhotoKit errors are not mapped to `WriteFailReason` payload/message.
 
 ### 4C. Asset Fetch Verification Retry (v1.1.4)
 
-- [ ] M4.12 Implement immediate fetch verification after write_success
-- [ ] M4.13 Implement 500ms×1 retry if first fetch fails
+- [x] M4.12 Implement immediate fetch verification after write_success
+- [x] M4.13 Implement 500ms×1 retry if first fetch fails
 
 ### 4D. write_failed global block (A.11) + Viewer handling
 
-- [ ] M4.14 Define write_failed reasons enum list (PRD A.10)
-- [ ] M4.15 On write_failed: force immediate DB flush
-- [ ] M4.16 On write_failed: block shutter and show L3 on Camera
-- [ ] M4.17 Implement Viewer “retry save”
-- [ ] M4.18 Implement Viewer “abandon item”
+- [x] M4.14 Define write_failed reasons enum list (PRD A.10)
+- [x] M4.15 On write_failed: force immediate DB flush
+- [x] M4.16 On write_failed: block shutter and show L3 on Camera
+- [x] M4.17 Implement Viewer “retry save”
+- [x] M4.18 Implement Viewer “abandon item"
 
 ### 4E. capture_failed counter window (30s / 3 times -> L3)
 
-- [ ] M4.19 Create CaptureFailureTracker module
+- [x] M4.19 Create CaptureFailureTracker module
 
 ### 4F. Thumbnails: thumb_failed + self-heal + rebuild
 
-- [ ] M4.20 Create ThumbnailPipeline module
-- [ ] M4.21 Implement 5s threshold to mark thumb_failed
-- [ ] M4.22 Implement late self-heal (thumb_failed -> thumb_ready)
-- [ ] M4.23 Implement 30s permanent failure + “Rebuild thumbnail”
+- [x] M4.20 Create ThumbnailPipeline module
+- [x] M4.21 Implement 5s threshold to mark thumb_failed
+- [x] M4.22 Implement late self-heal (thumb_failed -> thumb_ready)
+- [x] M4.23 Implement 30s permanent failure + “Rebuild thumbnail”
 
 ### 4G. Album archiving: album_add_failed non-blocking + retry policy
 
-- [ ] M4.24 Create AlbumArchiver module (PhotoKit album add)
-- [ ] M4.25 Implement album_add_failed state + first-session banner
-- [ ] M4.26 Implement “修复” bulk retry
-- [ ] M4.27 Implement automatic retry backoff (1s/3s/10s, max 3)
-- [ ] M4.28 Implement “retry once on next launch”
+- [x] M4.24 Create AlbumArchiver module (PhotoKit album add)
+- [x] M4.25 Implement album_add_failed state + first-session banner
+- [x] M4.26 Implement “修复” bulk retry
+- [x] M4.27 Implement automatic retry backoff (1s/3s/10s, max 3)
+- [x] M4.28 Implement “retry once on next launch”
 
 ### 4H. Limited phantom asset handling + required diagnostics (v1.1.4)
 
-- [ ] M4.29 Create PhantomAssetHealer module
-- [ ] M4.30 Write `phantom_asset_detected` (A.13)
+- [x] M4.29 Create PhantomAssetHealer module
+- [x] M4.30 Write `phantom_asset_detected` (A.13)
 
 ## Milestone 5 — Filmstrip + Viewer + Liked (Local-only) + Favorite Sync Attempt
 
-- [ ] M5.1 Create Filmstrip component file
-- [ ] M5.2 Implement “newest first” ordering everywhere
+- [x] M5.1 Create Filmstrip component file
+- [x] M5.2 Implement “newest first” ordering everywhere
 - [ ] M5.3 Implement state badges mapping (saving / ! / normal)
 - [ ] M5.4 Create ViewerContainer file (x/y, close, like)
 - [ ] M5.5 Create Zoom/Pan UIKit bridge file

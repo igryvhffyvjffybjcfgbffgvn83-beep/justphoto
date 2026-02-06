@@ -22,12 +22,56 @@ The app is a single-device, offline-first iOS app with these major subsystems:
 2) Camera & Capture (AVFoundation)
 - Owns the live preview pipeline and the “tap shutter -> image data” pipeline.
 - Must not be blocked by PoseSpec evaluation or thumbnail generation.
+- Camera permission state is represented as a PRD-aligned enum (`CameraAuth`) derived from `AVAuthorizationStatus` for `.video`.
+- When permission is `not_determined`, the Camera screen presents a pre-permission L3 prompt (Continue/Cancel). Continue will be wired to the system permission dialog in M3.3.
+  - M3.3 wires Continue to `AVCaptureDevice.requestAccess(for: .video)` via `CameraAuthMapper.requestVideoAccess()`.
+ - When permission is `denied` or `restricted`, Camera shows a placeholder (no live preview) and disables shutter, plus an L2 banner on Camera:
+   - denied: message `未获得相机权限，无法拍照` with action `去设置` (opens system Settings)
+   - restricted: message `相机受系统限制，无法使用` with action `了解`
+ - Warmup state is tracked by `WarmupTracker` (starts on Camera entry when permission is authorized):
+    - Immediately shows a warmup overlay
+    - Upgrades messaging after 3s
+    - Fails after 8s and shows an L3 modal.
+      - The failure modal includes a reason explanation from `CameraInitFailureReason` (Debug can simulate reasons until real camera init exists).
+      - If reason is `permission_denied`, the modal offers a `去设置` action.
+      - The failure modal includes a `重试` action that triggers a warmup restart and prints `CameraInitRetry`.
 
 3) Save Pipeline & Photos Integration (PhotoKit)
 - Writes captured photos to system Photos.
 - After `write_success`, runs Asset Fetch Verification Retry (immediate fetch, then 500ms retry once).
 - Adds assets to the “Just Photo” album; failures produce `album_add_failed` (non-blocking) and support retries.
 - Limited Access support includes phantom asset healing and `phantom_asset_detected` diagnostics.
+
+4B) Capture Pipeline Ownership
+- `CaptureCoordinator` is the single owner of the capture/save pipeline state machine (serializes work via an internal actor).
+- Camera routes shutter taps to `CaptureCoordinator.shared.shutterTapped()`.
+
+M4.7 (Shutter tap gate checks):
+- Capture pipeline reads session counters and blocks capture if any hard gate is hit: `write_failed > 0`, `in_flight >= 2`, `workset_count >= 20`.
+- When blocked, pipeline prints `CaptureSkipped:blocked` and does not start capture / create an item.
+
+M4.8 (Optimistic item insert):
+- After gates pass, capture pipeline inserts a `session_items` row immediately with state `captured_preview`, stable `item_id`, and monotonic `shot_seq`.
+- The insert is flushed immediately (`DBFlushed: optimistic_insert`) so kill/relaunch still shows the item.
+
+M4.9 (PendingFileStore):
+- Pending files live under `Application Support/JustPhoto/pending`.
+- `pending_file_rel_path` is stored in DB relative to `Application Support/JustPhoto` (example: `pending/<itemId>.<ext>`).
+- Writes are atomic (tmp write, then rename/replace); supports deletion.
+
+M4.10 (Capture data deadline):
+- After optimistic insert, pipeline must produce a readable pending file within 2.0s.
+- If the deadline is missed (no pending file), the optimistic item is removed from workset/DB and a `capture_failed` L1 toast ("没拍到") is shown.
+
+M4.11 (PhotoKit write after pending exists):
+- Pipeline transitions `captured_preview -> writing` only after the pending file is written and `pending_file_rel_path` is persisted.
+- PhotoKit save writes `asset_id` and transitions `writing -> write_success` (or `writing -> write_failed` on error).
+
+M4.12 (Immediate fetch verification):
+- After `write_success`, pipeline immediately fetches `PHAsset` by `asset_id` once and records an A.13 `photo_write_verification` event (includes `first_fetch_ms`).
+
+M4.13 (Fetch retry once):
+- If the first fetch returns empty, pipeline retries once after 500ms and records `retry_used=true`, `retry_delay_ms=500`, and `verified_within_2s` in the same A.13 `photo_write_verification` event.
 
 Project-level configuration notes:
 - This project uses Xcode-generated Info.plist (`GENERATE_INFOPLIST_FILE=YES`). Privacy strings are set via build settings `INFOPLIST_KEY_*` in `justphoto_opencode.xcodeproj/project.pbxproj`.
@@ -39,6 +83,18 @@ Project-level configuration notes:
 - Persistence is via SQLite (GRDB) plus file-based caches for pending writes and thumbnails.
 - Must survive kill/relaunch with recoverable `write_failed` items.
 
+SessionItem states (PRD-aligned):
+- `captured_preview`, `writing`, `write_success`, `thumb_ready`, `thumb_failed`, `write_failed`, `album_add_success`, `album_add_failed`
+
+M4.14 (write_failed reasons):
+- `WriteFailReason`: `no_permission`, `no_space`, `photo_lib_unavailable`, `system_pressure`.
+- A.10 mapping to user-facing Chinese short phrases is centralized (used for `未保存到系统相册（{reason}）`).
+
+M4.4 (Workset full flow):
+- When `workset_count >= 20`, Camera shows a blocking L3 modal (`workset_20_limit_modal`) with actions: clear unliked, go wrap, reset session, cancel.
+- After cancelling, an L2 banner (`workset_20_full_banner`) persists while full and can reopen the modal.
+- Clearing unliked deletes `liked=0` items except critical states (`write_failed`, `writing`, `captured_preview`).
+
 5) PoseSpec Engine (Vision + PoseSpec.json)
 - Reads PoseSpec from the app bundle, validates contracts (binding/rois/prdVersion), and evaluates cues.
 - Runs a tiered scheduler: T0 (pose/face geometry) up to 15Hz; T1 (ROI/frame metrics) up to 2Hz.
@@ -47,8 +103,18 @@ Project-level configuration notes:
 
 6) Prompt System (L1/L2/L3)
 - Centralized, contract-driven prompt presenter (Toast/Banner/Modal) with mutual exclusion and throttling.
+- Prompt frequency gates are enforced by `PromptCenter`.
+  - `FrequencyGate.sessionOnce` persists a per-session "shown" flag in SQLite (`sessions.flags_json`) so a prompt can be shown at most once per session (survives kill/relaunch).
+- Prompt supports up to 4 actions (primary/secondary/tertiary/quaternary) for multi-option modals.
 - Logs prompt show/dismiss/action locally (A.12 recommended, local only).
+  - Events are appended to the existing local JSONL diagnostics log (same rotation/export path as A.13).
+  - Event names: `prompt_shown`, `prompt_dismissed`, `prompt_action_tapped`.
+  - Implementation:
+    - `justphoto_opencode/Infrastructure/Diagnostics/DiagnosticsLogger.swift` defines `DiagnosticsEventWriter` (actor) with prompt event helpers.
+    - `justphoto_opencode/Infrastructure/Prompt/PromptCenter.swift` calls the writer on show/dismiss/action and includes `preempt` as a dismiss reason. It also exposes an `actionPublisher` for non-prompt UI code to react to button taps.
 - VoiceOver changes toast/banner timing (no in-app TTS).
+  - `justphoto_opencode/Infrastructure/Prompt/PromptTimings.swift` centralizes PRD timing constants and applies VoiceOver minimums.
+  - `justphoto_opencode/ContentView.swift` hosts `PromptHostOverlay` which schedules auto-dismiss tasks for toast and for banners that have no primary button; VoiceOver detection uses `UIAccessibility.isVoiceOverRunning` with a SwiftUI environment fallback.
 
 Debug-only UI policy:
 - Debug Tools UI is guarded by `#if DEBUG` in `justphoto_opencode/Features/Settings/SettingsSheet.swift` and `justphoto_opencode/Features/Settings/DebugToolsScreen.swift`.
@@ -56,6 +122,12 @@ Debug-only UI policy:
 
 Debug Tools currently include:
 - A `DebugToolsPing` button in `justphoto_opencode/Features/Settings/DebugToolsScreen.swift` that prints `DebugToolsPing` to Xcode console for quick plumbing verification.
+- A `PrintCameraAuth` button in `justphoto_opencode/Features/Settings/DebugToolsScreen.swift` that prints the mapped PRD permission state for `.video`.
+- Prompt test buttons in `justphoto_opencode/Features/Settings/DebugToolsScreen.swift`:
+  - `ShowTestToast`
+  - `ShowTestBannerWithButton`
+  - `ShowTestBannerAutoDismiss`
+- M4.3 helpers (15-count banner gate verification): seed workset to 14, insert 1 item to hit 15, print/clear the per-session prompt gate flag.
 
 7) Inspiration (ODR + Network.framework)
 - ODR downloads reference images on-demand.
@@ -159,9 +231,11 @@ Feature modules (SwiftUI-first):
 
 Infrastructure modules:
 - `Infrastructure/Database/` (GRDB, migrations)
+- `Infrastructure/Camera/` (camera permission state: `CameraAuth` mapping)
+- `Infrastructure/Camera/` (warmup overlay/timeouts: `WarmupTracker`)
 - `Infrastructure/Session/` (SessionRepository, models, TTL)
 - `Infrastructure/Diagnostics/` (A.13 JSONL logging + export + rotation)
-- `Infrastructure/Prompt/` (PromptCenter, L1/L2/L3)
+- `Infrastructure/Prompt/` (Prompt, PromptCenter, PromptTimings, L1/L2/L3 host views)
 - `Infrastructure/Photos/` (PhotoKit write, album archiving, phantom healer)
 - `Infrastructure/PoseSpec/` (loader/validator/engine runtime, scheduling)
 - `Infrastructure/Files/` (pending files, cache folders)
