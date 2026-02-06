@@ -38,8 +38,8 @@ The app is a single-device, offline-first iOS app with these major subsystems:
 
 3) Save Pipeline & Photos Integration (PhotoKit)
 - Writes captured photos to system Photos.
-- After `write_success`, runs Asset Fetch Verification Retry (immediate fetch, then 500ms retry once).
-- Adds assets to the “Just Photo” album; failures produce `album_add_failed` (non-blocking) and support retries.
+- After `finalized`, runs Asset Fetch Verification Retry (immediate fetch, then 500ms retry once).
+- Adds assets to the “Just Photo” album; failures set `album_state=failed` (non-blocking) and support retries.
 - Limited Access support includes phantom asset healing and `phantom_asset_detected` diagnostics.
 
 4B) Capture Pipeline Ownership
@@ -65,10 +65,10 @@ M4.10 (Capture data deadline):
 
 M4.11 (PhotoKit write after pending exists):
 - Pipeline transitions `captured_preview -> writing` only after the pending file is written and `pending_file_rel_path` is persisted.
-- PhotoKit save writes `asset_id` and transitions `writing -> write_success` (or `writing -> write_failed` on error).
+- PhotoKit save writes `asset_id` and transitions `writing -> finalized` (or `writing -> write_failed` on error).
 
 M4.12 (Immediate fetch verification):
-- After `write_success`, pipeline immediately fetches `PHAsset` by `asset_id` once and records an A.13 `photo_write_verification` event (includes `first_fetch_ms`).
+- After `finalized`, pipeline immediately fetches `PHAsset` by `asset_id` once and records an A.13 `photo_write_verification` event (includes `first_fetch_ms`).
 
 M4.13 (Fetch retry once):
 - If the first fetch returns empty, pipeline retries once after 500ms and records `retry_used=true`, `retry_delay_ms=500`, and `verified_within_2s` in the same A.13 `photo_write_verification` event.
@@ -83,8 +83,20 @@ Project-level configuration notes:
 - Persistence is via SQLite (GRDB) plus file-based caches for pending writes and thumbnails.
 - Must survive kill/relaunch with recoverable `write_failed` items.
 
-SessionItem states (PRD-aligned):
-- `captured_preview`, `writing`, `write_success`, `thumb_ready`, `thumb_failed`, `write_failed`, `album_add_success`, `album_add_failed`
+SessionItem 状态拆分为两个独立状态：
+
+thumbnail_state:
+- pending
+- ready
+- failed
+
+album_state:
+- none
+- adding
+- added
+- failed
+
+核心 session.state 不再包含 thumb/album 状态字段。
 
 M4.14 (write_failed reasons):
 - `WriteFailReason`: `no_permission`, `no_space`, `photo_lib_unavailable`, `system_pressure`.
@@ -287,7 +299,9 @@ SQLite (GRDB):
   - sessionId, createdAt, lastActiveAt, scene, sessionFlags
 - `session_items`
   - itemId, sessionId, shotSeq (monotonic), createdAt
-  - state (captured_preview/writing/write_success/write_failed/album_add_* /thumb_*), liked
+  - state (captured_preview/writing/write_failed/finalized), liked
+  - thumbnail_state (pending/ready/failed)
+  - album_state (none/adding/added/failed)
   - assetId (when available)
   - pendingFileRelPath (for recoverable writes)
   - thumbCacheRelPath (optional)
@@ -310,15 +324,15 @@ File storage:
 1) User taps shutter.
 2) Session immediately inserts an optimistic item (`captured_preview`) and persists.
 3) When photo data arrives, app writes pending file (atomic write).
-4) App writes to Photos via PhotoKit (`writing` -> `write_success` or `write_failed`).
-5) On `write_success`, app verifies asset fetch (immediate + 500ms retry once).
-6) App attempts album add; failures become `album_add_failed` (non-blocking) with retry policy.
-7) Thumbnails replace optimistic preview; >5s -> `thumb_failed`, late success self-heals; >30s offers rebuild.
+4) App writes to Photos via PhotoKit (`writing` -> `finalized` or `write_failed`).
+5) On `finalized`, app verifies asset fetch (immediate + 500ms retry once).
+6) App attempts album add; failures set `album_state=failed` (non-blocking) with retry policy.
+7) Thumbnails replace optimistic preview; >5s -> `thumbnail_state=failed`, late success self-heals; >30s offers rebuild.
 
 ### B) Global Shutter Blocking (Data Safety)
 If any session item is `write_failed`, shutter is disabled globally.
 Unblock requires either:
-- retry_write succeeds (item becomes write_success)
+- retry_write succeeds (item becomes finalized)
 - or user abandons item (removed from workset)
 
 ### C) Live Guidance (PoseSpec)

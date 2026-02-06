@@ -216,9 +216,13 @@ struct CameraScreen: View {
             case "camera_permission_denied":
                 guard e.actionId == "go_settings" else { return }
 #if canImport(UIKit)
-                openURL(URL(string: UIApplication.openSettingsURLString)!)
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    openURL(url)
+                }
 #else
+                #if DEBUG
                 print("OpenSettingsUnavailable")
+                #endif
 #endif
             case "camera_permission_restricted":
                 guard e.actionId == "understand" else { return }
@@ -234,9 +238,13 @@ struct CameraScreen: View {
                     print("CameraWarmupFailed: cancel")
                 case "go_settings":
 #if canImport(UIKit)
-                    openURL(URL(string: UIApplication.openSettingsURLString)!)
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        openURL(url)
+                    }
 #else
+                    #if DEBUG
                     print("OpenSettingsUnavailable")
+                    #endif
 #endif
                 default:
                     break

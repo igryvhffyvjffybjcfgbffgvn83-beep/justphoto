@@ -1,6 +1,10 @@
 import Foundation
 import GRDB
 
+enum SessionError: Error {
+    case summaryMissing
+}
+
 enum SessionRepositoryError: Error {
     case databaseNotReady
 }
@@ -382,7 +386,9 @@ final class SessionRepository {
                 let oldId = current.sessionId
                 try clearCurrentSession(deleteData: true)
                 let newId = try createNewSession(scene: scene, now: now)
+                #if DEBUG
                 print("SessionTTLExpired: old=\(oldId) new=\(newId)")
+                #endif
                 return (sessionId: newId, changed: true)
             }
             return (sessionId: current.sessionId, changed: false)
@@ -680,7 +686,9 @@ final class SessionRepository {
             )
         }
 
+        #if DEBUG
         print("AlbumStateUpdated: item_id=\(itemId) album_state=\(AlbumState.success.rawValue)")
+        #endif
         DatabaseManager.shared.flush(reason: "album_add_success")
     }
 
@@ -778,7 +786,10 @@ final class SessionRepository {
         }
 
         DatabaseManager.shared.flush(reason: "optimistic_insert")
-        return summary!
+        guard let summary else {
+            throw SessionError.summaryMissing
+        }
+        return summary
     }
 
     func latestSessionItemForCurrentSession() throws -> SessionItemSummary? {
@@ -1044,7 +1055,9 @@ final class SessionRepository {
             )
         }
 
+        #if DEBUG
         print("WriteSuccessMarked: item_id=\(itemId) state=\(SessionItemState.finalized.rawValue) asset_id=\(assetId) album_state_default=\(AlbumState.queued.rawValue)")
+        #endif
         if flush {
             DatabaseManager.shared.flush(reason: SessionItemState.finalized.rawValue)
         }
@@ -1144,7 +1157,9 @@ final class SessionRepository {
             )
         }
 
+        #if DEBUG
         print("ThumbnailStateUpdated: item_id=\(itemId) thumbnail_state=\(state?.rawValue ?? "<nil>")")
+        #endif
         if flush {
             DatabaseManager.shared.flush(reason: "thumbnail_state")
         }
@@ -1164,7 +1179,9 @@ final class SessionRepository {
             )
         }
 
+        #if DEBUG
         print("AlbumStateUpdated: item_id=\(itemId) album_state=\(state?.rawValue ?? "<nil>")")
+        #endif
         if flush {
             DatabaseManager.shared.flush(reason: "album_state")
         }
