@@ -39,7 +39,7 @@ actor FavoriteSyncer {
         #endif
 
         guard let asset = Self.fetchAsset(localIdentifier: id) else {
-            return .failed
+            return .skipped_missing_asset
         }
 
         do {
@@ -61,6 +61,10 @@ actor FavoriteSyncer {
             }
             return .success
         } catch {
+            let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+            if status != .authorized {
+                return .skipped_not_full_access
+            }
             return .failed
         }
     }

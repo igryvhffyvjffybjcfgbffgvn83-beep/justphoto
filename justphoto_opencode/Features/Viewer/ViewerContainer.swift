@@ -29,14 +29,19 @@ private struct PagingScrollGateView: UIViewRepresentable {
         fileprivate weak var hostView: UIView?
         private weak var pagingScrollView: UIScrollView?
         private var lastApplied: Bool?
+        private var updateToken: UUID = UUID()
 
         func setPagingEnabled(_ enabled: Bool) {
             if lastApplied == enabled { return }
             lastApplied = enabled
 
+            let token = UUID()
+            updateToken = token
+
             // `TabView(.page)` hierarchy can be created lazily; apply on next runloop.
             DispatchQueue.main.async { [weak self] in
                 guard let self, let hostView = self.hostView else { return }
+                guard self.updateToken == token else { return }
                 let scrollView = self.pagingScrollView ?? Self.findPagingScrollView(startingAt: hostView)
                 self.pagingScrollView = scrollView
                 scrollView?.isScrollEnabled = enabled
@@ -70,6 +75,7 @@ private struct PagingScrollGateView: View {
 struct ViewerContainer: View {
     @EnvironmentObject private var promptCenter: PromptCenter
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
 
     let items: [SessionRepository.SessionItemSummary]
     let initialItemId: String?
@@ -119,6 +125,15 @@ struct ViewerContainer: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: CaptureEvents.sessionItemsChanged)) { _ in
             refreshItemsFromDB()
+        }
+        .onReceive(promptCenter.actionPublisher) { e in
+            guard e.promptKey == "favorite_sync_failed_banner" else { return }
+            guard e.actionId == "go_settings" else { return }
+#if canImport(UIKit)
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                openURL(url)
+            }
+#endif
         }
         .promptHost()
     }
@@ -208,7 +223,9 @@ struct ViewerContainer: View {
                 }
             }
         } catch {
+            #if DEBUG
             print("ViewerToggleLikeFAILED: item_id=\(current.itemId) error=\(error)")
+            #endif
         }
     }
 
@@ -246,7 +263,9 @@ struct ViewerContainer: View {
         do {
             itemsState = try SessionRepository.shared.latestItemsForCurrentSession(limit: limit)
         } catch {
+            #if DEBUG
             print("ViewerItemsRefreshFAILED: \(error)")
+            #endif
         }
     }
 }
