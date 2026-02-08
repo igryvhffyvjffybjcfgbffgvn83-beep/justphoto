@@ -113,6 +113,7 @@ M4.4 (Workset full flow):
 - Runs a tiered scheduler: T0 (pose/face geometry) up to 15Hz; T1 (ROI/frame metrics) up to 2Hz.
 - Provides: single cue selection, anti-jitter, praise policy, withRef matching (including mirror evaluation).
 - Emits A.13 diagnostics events for match state, fallbacks, and related invariants.
+  - Bundle resource: `PoseSpec.json` is shipped inside the app bundle (M6.1).
 
 6) Prompt System (L1/L2/L3)
 - Centralized, contract-driven prompt presenter (Toast/Banner/Modal) with mutual exclusion and throttling.

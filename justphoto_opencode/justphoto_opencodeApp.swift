@@ -16,6 +16,13 @@ struct justphoto_opencodeApp: App {
     init() {
         print("GRDBReady")
 
+        if let url = Bundle.main.url(forResource: "PoseSpec", withExtension: "json") {
+            _ = url
+            print("PoseSpecLoadedFromBundle")
+        } else {
+            print("PoseSpecLoadFromBundleFAILED")
+        }
+
         do {
             let result = try DatabaseManager.shared.start()
             print("DBOpened: \(result.path) existed_before=\(result.existedBefore) exists_after=\(result.existsAfter)")

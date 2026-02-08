@@ -1,0 +1,4489 @@
+{
+  "name": "PoseSpec",
+  "schemaVersion": "0.1",
+  "generatedAt": "2026-01-29",
+  "coordinateSystem": {
+    "space": "imageNormalized",
+    "x": "right",
+    "y": "down",
+    "range": [
+      0.0,
+      1.0
+    ],
+    "note": "All landmarks must be normalized to portrait orientation before evaluation."
+  },
+  "qaAssets": {
+    "namingConvention": "QA/<scene>/<cueId>_before.jpg and QA/<scene>/<cueId>_after.jpg",
+    "requirement": "Each cue must have 2 images: before (must trigger warn/hard) and after (ideal, must not trigger)."
+  },
+  "defaults": {
+    "confidence": {
+      "minConfidence": 0.5,
+      "multiPersonDegradeTo": [
+        "FRAME_MOVE_LEFT",
+        "FRAME_MOVE_RIGHT",
+        "FRAME_MOVE_UP",
+        "FRAME_MOVE_DOWN",
+        "DIST_STEP_CLOSER",
+        "DIST_STEP_BACK",
+        "FRAME_ADD_HEADROOM",
+        "FRAME_DONT_CROP_FEET",
+        "FRAME_GENERAL"
+      ],
+      "fallbackCueId": "FRAME_GENERAL",
+      "minLandmarkConfidence": 0.5
+    },
+    "antiJitter": {
+      "persistFrames": 6,
+      "minHoldMs": 3000,
+      "cooldownMs": 800
+    },
+    "hysteresis": {
+      "enabled": true,
+      "note": "Use enter thresholds for triggering; use exit thresholds (usually tighter) to clear."
+    },
+    "selection": {
+      "pickOneCue": true,
+      "strategy": "priority_desc_then_severity_desc_then_mutex_with_severityBoost",
+      "severityNormalization": "abs(error)/hardThreshold",
+      "effectivePriority": {
+        "base": "priority",
+        "boostBySeverityNormalized": [
+          {
+            "ifGte": 1.75,
+            "add": 2
+          },
+          {
+            "ifGte": 1.25,
+            "add": 1
+          }
+        ],
+        "cap": 6
+      },
+      "tieBreakers": [
+        "effectivePriority_desc",
+        "severity_desc",
+        "priority_desc",
+        "mutexGroup",
+        "id"
+      ],
+      "notes": [
+        "Map queue order light→compose→pose→expression by setting base priority per cue category.",
+        "Allow severe issues to jump queue via severityBoost (PRD 4.2)."
+      ]
+    }
+  },
+  "sceneDefaults": {
+    "base": {
+      "confidence": {
+        "minConfidence": 0.5,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      }
+    },
+    "cafe": {
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      }
+    },
+    "outdoor": {
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      }
+    }
+  },
+  "mutexGroups": [
+    "FRAME_X",
+    "FRAME_Y",
+    "FRAME_HEADROOM",
+    "FRAME_FOOT",
+    "DIST",
+    "SHOULDER_LEVEL",
+    "HIP_LEVEL",
+    "TORSO",
+    "HEAD_TILT",
+    "CHIN",
+    "HANDS",
+    "ARMS",
+    "POSTURE",
+    "STANCE",
+    "FALLBACK",
+    "LIGHT_FACE",
+    "LIGHT_BG",
+    "WB",
+    "BG_CLUTTER",
+    "MOTION",
+    "GLASSES",
+    "COMPOSE_CAFE",
+    "SUN_LIGHT",
+    "SKY",
+    "HORIZON",
+    "LANDMARK_ALIGN",
+    "CROWD",
+    "BUILDING_VERTICAL",
+    "WIND",
+    "COMPOSE_LANDMARK"
+  ],
+  "metrics": {
+    "helpers": {
+      "mid(a,b)": "((a.x+b.x)/2, (a.y+b.y)/2)",
+      "deg(atan2(dy,dx))": "atan2 returns radians; convert to degrees",
+      "bbox(points)": "min/max x/y over visible points",
+      "center(bbox)": "(bbox.x + bbox.w/2, bbox.y + bbox.h/2)",
+      "dist(a,b)": "Euclidean distance between two 2D points a(x,y) and b(x,y): hypot(a.x-b.x, a.y-b.y). Points are in the same normalized image space.",
+      "angle(a,b,c)": "Angle at point b formed by segments ba and bc, in degrees: deg(acos( dot(ba,bc)/(|ba||bc|) )).",
+      "avgConfidence(points)": "Average confidence over a list of landmarks (ignore missing). Each point may have .confidence; if absent, treat as 1.0."
+    },
+    "notes": [
+      "All formulas are string specs; implementation may compile or interpret them.",
+      "Light/frame metrics (luma, highlightClipPct, edgeDensityBG, registration*) are computed from camera frame + ROIs."
+    ]
+  },
+  "cues": [
+    {
+      "id": "FRAME_MOVE_LEFT",
+      "scene": "base",
+      "priority": 4,
+      "mutexGroup": "FRAME_X",
+      "metric": {
+        "landmarks": [
+          "body.leftShoulder",
+          "body.rightShoulder",
+          "body.leftHip",
+          "body.rightHip"
+        ],
+        "formula": "centerXOffset = center(bbox(bodyPoints)).x - 0.5",
+        "unit": "normalized",
+        "meaning": ">0 means subject is to the right of center",
+        "notes": "",
+        "requires": [
+          "pose"
+        ],
+        "computeTier": "T0",
+        "updateHz": 15,
+        "outputs": [
+          "centerXOffset"
+        ]
+      },
+      "trigger": {
+        "withRef": {
+          "error": "centerXOffset - target.centerXOffset",
+          "warn": {
+            ">": 0.07
+          },
+          "hard": {
+            ">": 0.12
+          },
+          "exit": {
+            "<=": 0.04
+          }
+        },
+        "noRef": {
+          "error": "centerXOffset",
+          "warn": {
+            ">": 0.07
+          },
+          "hard": {
+            ">": 0.12
+          },
+          "exit": {
+            "<=": 0.04
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "move_left"
+        },
+        "whenNegative": {
+          "action": "none"
+        }
+      },
+      "script": {
+        "zh": [
+          "往左一点",
+          "左边来一点",
+          "往左挪一点点"
+        ],
+        "en": [
+          "Move a bit left",
+          "Step left a touch",
+          "Shift left slightly"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "arrow",
+        "anchor": "personCenter",
+        "direction": "left",
+        "highlight": "personBBox"
+      },
+      "confidence": {
+        "minConfidence": 0.5,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/base/FRAME_MOVE_LEFT_before.jpg",
+        "afterImage": "QA/base/FRAME_MOVE_LEFT_after.jpg",
+        "beforeExpected": "Must trigger (hard recommended): centerXOffset > +0.12 and selectedCueId=FRAME_MOVE_LEFT for >=persistFrames.",
+        "afterExpected": "Must clear: centerXOffset < +0.04 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "FRAME_MOVE_RIGHT",
+      "scene": "base",
+      "priority": 4,
+      "mutexGroup": "FRAME_X",
+      "metric": {
+        "landmarks": [
+          "body.leftShoulder",
+          "body.rightShoulder",
+          "body.leftHip",
+          "body.rightHip"
+        ],
+        "formula": "centerXOffset = center(bbox(bodyPoints)).x - 0.5",
+        "unit": "normalized",
+        "meaning": "<0 means subject is to the left of center",
+        "notes": "",
+        "requires": [
+          "pose"
+        ],
+        "computeTier": "T0",
+        "updateHz": 15,
+        "outputs": [
+          "centerXOffset"
+        ]
+      },
+      "trigger": {
+        "withRef": {
+          "error": "centerXOffset - target.centerXOffset",
+          "warn": {
+            "<": -0.07
+          },
+          "hard": {
+            "<": -0.12
+          },
+          "exit": {
+            ">=": -0.04
+          }
+        },
+        "noRef": {
+          "error": "centerXOffset",
+          "warn": {
+            "<": -0.07
+          },
+          "hard": {
+            "<": -0.12
+          },
+          "exit": {
+            ">=": -0.04
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenNegative": {
+          "action": "move_right"
+        },
+        "whenPositive": {
+          "action": "none"
+        }
+      },
+      "script": {
+        "zh": [
+          "往右一点",
+          "右边来一点",
+          "往右挪一点点"
+        ],
+        "en": [
+          "Move a bit right",
+          "Step right a touch",
+          "Shift right slightly"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "arrow",
+        "anchor": "personCenter",
+        "direction": "right",
+        "highlight": "personBBox"
+      },
+      "confidence": {
+        "minConfidence": 0.5,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/base/FRAME_MOVE_RIGHT_before.jpg",
+        "afterImage": "QA/base/FRAME_MOVE_RIGHT_after.jpg",
+        "beforeExpected": "Must trigger (hard): centerXOffset < -0.12 and selectedCueId=FRAME_MOVE_RIGHT for >=persistFrames.",
+        "afterExpected": "Must clear: centerXOffset > -0.04 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "FRAME_MOVE_UP",
+      "scene": "base",
+      "priority": 4,
+      "mutexGroup": "FRAME_Y",
+      "metric": {
+        "landmarks": [
+          "body.leftShoulder",
+          "body.rightShoulder",
+          "body.leftHip",
+          "body.rightHip"
+        ],
+        "formula": "centerYOffset = center(bbox(bodyPoints)).y - 0.52",
+        "unit": "normalized",
+        "meaning": ">0 means subject is too low in the frame",
+        "notes": "",
+        "requires": [
+          "pose"
+        ],
+        "computeTier": "T0",
+        "updateHz": 15,
+        "outputs": [
+          "centerYOffset"
+        ]
+      },
+      "trigger": {
+        "withRef": {
+          "error": "centerYOffset - target.centerYOffset",
+          "warn": {
+            ">": 0.08
+          },
+          "hard": {
+            ">": 0.14
+          },
+          "exit": {
+            "<=": 0.06
+          }
+        },
+        "noRef": {
+          "error": "centerYOffset",
+          "warn": {
+            ">": 0.08
+          },
+          "hard": {
+            ">": 0.14
+          },
+          "exit": {
+            "<=": 0.06
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "move_up"
+        },
+        "whenNegative": {
+          "action": "none"
+        }
+      },
+      "script": {
+        "zh": [
+          "往上一点",
+          "上来一点",
+          "往上挪一点点"
+        ],
+        "en": [
+          "Move up a bit",
+          "Step up a touch",
+          "Come up slightly"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "arrow",
+        "anchor": "personCenter",
+        "direction": "up",
+        "highlight": "personBBox"
+      },
+      "confidence": {
+        "minConfidence": 0.5,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/base/FRAME_MOVE_UP_before.jpg",
+        "afterImage": "QA/base/FRAME_MOVE_UP_after.jpg",
+        "beforeExpected": "Must trigger (hard): centerYOffset > +0.14 and selectedCueId=FRAME_MOVE_UP for >=persistFrames.",
+        "afterExpected": "Must clear: centerYOffset < +0.06 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "FRAME_MOVE_DOWN",
+      "scene": "base",
+      "priority": 4,
+      "mutexGroup": "FRAME_Y",
+      "metric": {
+        "landmarks": [
+          "body.leftShoulder",
+          "body.rightShoulder",
+          "body.leftHip",
+          "body.rightHip"
+        ],
+        "formula": "centerYOffset = center(bbox(bodyPoints)).y - 0.52",
+        "unit": "normalized",
+        "meaning": "<0 means subject is too high in the frame",
+        "notes": "",
+        "requires": [
+          "pose"
+        ],
+        "computeTier": "T0",
+        "updateHz": 15,
+        "outputs": [
+          "centerYOffset"
+        ]
+      },
+      "trigger": {
+        "withRef": {
+          "error": "centerYOffset - target.centerYOffset",
+          "warn": {
+            "<": -0.08
+          },
+          "hard": {
+            "<": -0.14
+          },
+          "exit": {
+            ">=": -0.06
+          }
+        },
+        "noRef": {
+          "error": "centerYOffset",
+          "warn": {
+            "<": -0.08
+          },
+          "hard": {
+            "<": -0.14
+          },
+          "exit": {
+            ">=": -0.06
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenNegative": {
+          "action": "move_down"
+        },
+        "whenPositive": {
+          "action": "none"
+        }
+      },
+      "script": {
+        "zh": [
+          "往下一点",
+          "再下来一点",
+          "往下挪一点点"
+        ],
+        "en": [
+          "Move down a bit",
+          "Step down a touch",
+          "Come down slightly"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "arrow",
+        "anchor": "personCenter",
+        "direction": "down",
+        "highlight": "personBBox"
+      },
+      "confidence": {
+        "minConfidence": 0.5,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/base/FRAME_MOVE_DOWN_before.jpg",
+        "afterImage": "QA/base/FRAME_MOVE_DOWN_after.jpg",
+        "beforeExpected": "Must trigger (hard): centerYOffset < -0.14 and selectedCueId=FRAME_MOVE_DOWN for >=persistFrames.",
+        "afterExpected": "Must clear: centerYOffset > -0.06 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "DIST_STEP_CLOSER",
+      "scene": "base",
+      "priority": 4,
+      "mutexGroup": "DIST",
+      "metric": {
+        "landmarks": [
+          "body.leftShoulder",
+          "body.rightShoulder",
+          "body.leftAnkle",
+          "body.rightAnkle"
+        ],
+        "formula": "bboxHeight = bbox(bodyPoints).h",
+        "unit": "normalized",
+        "meaning": "Smaller bboxHeight means subject is farther away",
+        "notes": "",
+        "requires": [
+          "pose"
+        ],
+        "computeTier": "T0",
+        "updateHz": 15,
+        "outputs": [
+          "bboxHeight"
+        ]
+      },
+      "trigger": {
+        "withRef": {
+          "error": "bboxHeight - target.bboxHeight",
+          "warn": {
+            "<": -0.06
+          },
+          "hard": {
+            "<": -0.12
+          },
+          "exit": {
+            ">=": -0.06
+          }
+        },
+        "noRef": {
+          "idealRange": [
+            0.55,
+            0.78
+          ],
+          "warn": {
+            "<": 0.49
+          },
+          "hard": {
+            "<": 0.43
+          },
+          "exit": {
+            ">=": 0.55
+          }
+        }
+      },
+      "direction": {
+        "type": "range",
+        "whenBelow": {
+          "action": "step_closer"
+        },
+        "whenAbove": {
+          "action": "none"
+        }
+      },
+      "script": {
+        "zh": [
+          "靠近一点",
+          "再近一点",
+          "往前走一步"
+        ],
+        "en": [
+          "Step a bit closer",
+          "Come closer",
+          "One step forward"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "zoom_hint",
+        "style": "inward",
+        "highlight": "personBBox"
+      },
+      "confidence": {
+        "minConfidence": 0.5,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/base/DIST_STEP_CLOSER_before.jpg",
+        "afterImage": "QA/base/DIST_STEP_CLOSER_after.jpg",
+        "beforeExpected": "Must trigger (hard): bboxHeight < 0.43 and selectedCueId=DIST_STEP_CLOSER for >=persistFrames.",
+        "afterExpected": "Must clear: bboxHeight >= 0.55 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "DIST_STEP_BACK",
+      "scene": "base",
+      "priority": 4,
+      "mutexGroup": "DIST",
+      "metric": {
+        "landmarks": [
+          "body.leftShoulder",
+          "body.rightShoulder",
+          "body.leftAnkle",
+          "body.rightAnkle"
+        ],
+        "formula": "bboxHeight = bbox(bodyPoints).h",
+        "unit": "normalized",
+        "meaning": "Larger bboxHeight means subject is too close / too large in frame",
+        "notes": "",
+        "requires": [
+          "pose"
+        ],
+        "computeTier": "T0",
+        "updateHz": 15,
+        "outputs": [
+          "bboxHeight"
+        ]
+      },
+      "trigger": {
+        "withRef": {
+          "error": "bboxHeight - target.bboxHeight",
+          "warn": {
+            ">": 0.05
+          },
+          "hard": {
+            ">": 0.1
+          },
+          "exit": {
+            "<=": 0.05
+          }
+        },
+        "noRef": {
+          "idealMax": 0.78,
+          "warn": {
+            ">": 0.83
+          },
+          "hard": {
+            ">": 0.88
+          },
+          "exit": {
+            "<=": 0.78
+          }
+        }
+      },
+      "direction": {
+        "type": "range",
+        "whenAbove": {
+          "action": "step_back"
+        },
+        "whenBelow": {
+          "action": "none"
+        }
+      },
+      "script": {
+        "zh": [
+          "退后一点",
+          "离远一点",
+          "往后退一步"
+        ],
+        "en": [
+          "Step back a bit",
+          "Move back",
+          "One step back"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "zoom_hint",
+        "style": "outward",
+        "highlight": "personBBox"
+      },
+      "confidence": {
+        "minConfidence": 0.5,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/base/DIST_STEP_BACK_before.jpg",
+        "afterImage": "QA/base/DIST_STEP_BACK_after.jpg",
+        "beforeExpected": "Must trigger (hard): bboxHeight > 0.88 and selectedCueId=DIST_STEP_BACK for >=persistFrames.",
+        "afterExpected": "Must clear: bboxHeight <= 0.78 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "FRAME_ADD_HEADROOM",
+      "scene": "base",
+      "priority": 4,
+      "mutexGroup": "FRAME_HEADROOM",
+      "metric": {
+        "landmarks": [
+          "body.nose",
+          "body.leftShoulder",
+          "body.rightShoulder"
+        ],
+        "formula": "headroom = bbox(bodyPoints).y  # distance from top edge to subject bbox top",
+        "unit": "normalized",
+        "meaning": "Smaller headroom means top of head is too close to frame top",
+        "notes": "",
+        "requires": [
+          "pose"
+        ],
+        "computeTier": "T0",
+        "updateHz": 15,
+        "outputs": [
+          "headroom"
+        ]
+      },
+      "trigger": {
+        "withRef": {
+          "error": "headroom - target.headroom",
+          "warn": {
+            "<": -0.02
+          },
+          "hard": {
+            "<": -0.05
+          },
+          "exit": {
+            ">=": 0.09
+          }
+        },
+        "noRef": {
+          "idealMin": 0.07,
+          "warn": {
+            "<": 0.05
+          },
+          "hard": {
+            "<": 0.02
+          },
+          "exit": {
+            ">=": 0.09
+          }
+        }
+      },
+      "direction": {
+        "type": "range",
+        "whenBelow": {
+          "action": "add_headroom"
+        },
+        "whenAbove": {
+          "action": "none"
+        },
+        "actionHint": "move subject down OR raise camera"
+      },
+      "script": {
+        "zh": [
+          "头顶留点空",
+          "别顶到头",
+          "上面空一点"
+        ],
+        "en": [
+          "Give a bit more headroom",
+          "Don’t crop the top",
+          "Leave space above"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "safe_margin",
+        "edge": "top",
+        "highlight": "personBBoxTop"
+      },
+      "confidence": {
+        "minConfidence": 0.5,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/base/FRAME_ADD_HEADROOM_before.jpg",
+        "afterImage": "QA/base/FRAME_ADD_HEADROOM_after.jpg",
+        "beforeExpected": "Must trigger (hard): headroom < 0.02 and selectedCueId=FRAME_ADD_HEADROOM for >=persistFrames.",
+        "afterExpected": "Must clear: headroom > 0.09 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "FRAME_DONT_CROP_FEET",
+      "scene": "base",
+      "priority": 4,
+      "mutexGroup": "FRAME_FOOT",
+      "metric": {
+        "landmarks": [
+          "body.leftAnkle",
+          "body.rightAnkle"
+        ],
+        "formula": "bottomMargin = 1.0 - bbox(bodyPoints).maxY",
+        "unit": "normalized",
+        "meaning": "Smaller bottomMargin means feet are too close to bottom / cropped",
+        "notes": "",
+        "requires": [
+          "pose"
+        ],
+        "computeTier": "T0",
+        "updateHz": 15,
+        "outputs": [
+          "bottomMargin"
+        ]
+      },
+      "trigger": {
+        "withRef": {
+          "error": "bottomMargin - target.bottomMargin",
+          "warn": {
+            "<": -0.02
+          },
+          "hard": {
+            "<": -0.05
+          },
+          "exit": {
+            ">=": 0.05
+          }
+        },
+        "noRef": {
+          "idealMin": 0.05,
+          "warn": {
+            "<": 0.03
+          },
+          "hard": {
+            "<": 0.0
+          },
+          "exit": {
+            ">=": 0.05
+          }
+        }
+      },
+      "direction": {
+        "type": "range",
+        "whenBelow": {
+          "action": "keep_feet_in_frame",
+          "actionHint": "move up or step back"
+        },
+        "whenAbove": {
+          "action": "none"
+        }
+      },
+      "script": {
+        "zh": [
+          "别切脚",
+          "脚下留点",
+          "下面多留一点"
+        ],
+        "en": [
+          "Don’t crop the feet",
+          "Leave space below",
+          "Keep feet in frame"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "safe_margin",
+        "edge": "bottom",
+        "highlight": "personBBoxBottom"
+      },
+      "confidence": {
+        "minConfidence": 0.5,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/base/FRAME_DONT_CROP_FEET_before.jpg",
+        "afterImage": "QA/base/FRAME_DONT_CROP_FEET_after.jpg",
+        "beforeExpected": "Must trigger (hard): bottomMargin < 0.01 (cropped/near bottom) and selectedCueId=FRAME_DONT_CROP_FEET for >=persistFrames.",
+        "afterExpected": "Must clear: bottomMargin >= 0.05 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "SHOULDER_LEVEL_LEFT_DOWN",
+      "scene": "base",
+      "priority": 3,
+      "mutexGroup": "SHOULDER_LEVEL",
+      "metric": {
+        "landmarks": [
+          "body.leftShoulder",
+          "body.rightShoulder"
+        ],
+        "formula": "shoulderAngleDeg = deg(atan2(rShoulder.y - lShoulder.y, rShoulder.x - lShoulder.x))",
+        "unit": "deg",
+        "meaning": ">0 means right shoulder is lower (left shoulder higher)",
+        "notes": "",
+        "requires": [
+          "pose"
+        ],
+        "computeTier": "T0",
+        "updateHz": 15,
+        "outputs": [
+          "shoulderAngleDeg"
+        ]
+      },
+      "trigger": {
+        "withRef": {
+          "error": "shoulderAngleDeg - target.shoulderAngleDeg",
+          "warn": {
+            ">": 8
+          },
+          "hard": {
+            ">": 14
+          },
+          "exit": {
+            "<=": 5
+          }
+        },
+        "noRef": {
+          "idealRangeDeg": [
+            -5,
+            5
+          ],
+          "warn": {
+            ">": 8
+          },
+          "hard": {
+            ">": 14
+          },
+          "exit": {
+            "<=": 5
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "drop_left_shoulder"
+        },
+        "whenNegative": {
+          "action": "none"
+        }
+      },
+      "script": {
+        "zh": [
+          "左肩放低一点",
+          "左肩松一下",
+          "别耸左肩"
+        ],
+        "en": [
+          "Drop your left shoulder",
+          "Lower left shoulder a touch",
+          "Relax left shoulder"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "angle_guide",
+        "segment": "shoulderLine",
+        "arrow": {
+          "anchor": "body.leftShoulder",
+          "direction": "down"
+        }
+      },
+      "confidence": {
+        "minConfidence": 0.6,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/base/SHOULDER_LEVEL_LEFT_DOWN_before.jpg",
+        "afterImage": "QA/base/SHOULDER_LEVEL_LEFT_DOWN_after.jpg",
+        "beforeExpected": "Must trigger (hard): shoulderAngleDeg > +14° and selectedCueId=SHOULDER_LEVEL_LEFT_DOWN for >=persistFrames.",
+        "afterExpected": "Must clear: shoulderAngleDeg < +5° and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "SHOULDER_LEVEL_RIGHT_DOWN",
+      "scene": "base",
+      "priority": 3,
+      "mutexGroup": "SHOULDER_LEVEL",
+      "metric": {
+        "landmarks": [
+          "body.leftShoulder",
+          "body.rightShoulder"
+        ],
+        "formula": "shoulderAngleDeg = deg(atan2(rShoulder.y - lShoulder.y, rShoulder.x - lShoulder.x))",
+        "unit": "deg",
+        "meaning": "<0 means right shoulder is higher (left shoulder lower)",
+        "notes": "",
+        "requires": [
+          "pose"
+        ],
+        "computeTier": "T0",
+        "updateHz": 15,
+        "outputs": [
+          "shoulderAngleDeg"
+        ]
+      },
+      "trigger": {
+        "withRef": {
+          "error": "shoulderAngleDeg - target.shoulderAngleDeg",
+          "warn": {
+            "<": -8
+          },
+          "hard": {
+            "<": -14
+          },
+          "exit": {
+            ">=": -5
+          }
+        },
+        "noRef": {
+          "idealRangeDeg": [
+            -5,
+            5
+          ],
+          "warn": {
+            "<": -8
+          },
+          "hard": {
+            "<": -14
+          },
+          "exit": {
+            ">=": -5
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenNegative": {
+          "action": "drop_right_shoulder"
+        },
+        "whenPositive": {
+          "action": "none"
+        }
+      },
+      "script": {
+        "zh": [
+          "右肩放低一点",
+          "右肩松一下",
+          "别耸右肩"
+        ],
+        "en": [
+          "Drop your right shoulder",
+          "Lower right shoulder a touch",
+          "Relax right shoulder"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "angle_guide",
+        "segment": "shoulderLine",
+        "arrow": {
+          "anchor": "body.rightShoulder",
+          "direction": "down"
+        }
+      },
+      "confidence": {
+        "minConfidence": 0.6,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/base/SHOULDER_LEVEL_RIGHT_DOWN_before.jpg",
+        "afterImage": "QA/base/SHOULDER_LEVEL_RIGHT_DOWN_after.jpg",
+        "beforeExpected": "Must trigger (hard): shoulderAngleDeg < -14° and selectedCueId=SHOULDER_LEVEL_RIGHT_DOWN for >=persistFrames.",
+        "afterExpected": "Must clear: shoulderAngleDeg > -5° and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "HIP_SQUARE",
+      "scene": "base",
+      "priority": 3,
+      "mutexGroup": "HIP_LEVEL",
+      "metric": {
+        "landmarks": [
+          "body.leftHip",
+          "body.rightHip"
+        ],
+        "formula": "hipAngleDeg = deg(atan2(rHip.y - lHip.y, rHip.x - lHip.x))",
+        "unit": "deg",
+        "meaning": "abs(angle) indicates hip tilt",
+        "notes": "",
+        "requires": [
+          "pose"
+        ],
+        "computeTier": "T0",
+        "updateHz": 15,
+        "outputs": [
+          "hipAngleDeg"
+        ]
+      },
+      "trigger": {
+        "withRef": {
+          "error": "hipAngleDeg - target.hipAngleDeg",
+          "warn": {
+            "abs>": 10
+          },
+          "hard": {
+            "abs>": 16
+          },
+          "exit": {
+            "abs<=": 6
+          }
+        },
+        "noRef": {
+          "idealAbsMaxDeg": 6,
+          "warn": {
+            "abs>": 10
+          },
+          "hard": {
+            "abs>": 16
+          },
+          "exit": {
+            "abs<=": 6
+          }
+        }
+      },
+      "direction": {
+        "type": "abs",
+        "whenExceeded": {
+          "action": "square_hips"
+        }
+      },
+      "script": {
+        "zh": [
+          "胯别歪，站稳",
+          "把胯摆正",
+          "站稳一点"
+        ],
+        "en": [
+          "Square your hips",
+          "Keep hips level",
+          "Stand steady"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "level_line",
+        "segment": "hipLine"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/base/HIP_SQUARE_before.jpg",
+        "afterImage": "QA/base/HIP_SQUARE_after.jpg",
+        "beforeExpected": "Must trigger (hard): |hipAngleDeg| > 16° and selectedCueId=HIP_SQUARE for >=persistFrames.",
+        "afterExpected": "Must clear: |hipAngleDeg| < 6° and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "TORSO_STRAIGHTEN",
+      "scene": "base",
+      "priority": 3,
+      "mutexGroup": "TORSO",
+      "metric": {
+        "landmarks": [
+          "body.leftShoulder",
+          "body.rightShoulder",
+          "body.leftHip",
+          "body.rightHip"
+        ],
+        "formula": "torsoLeanAngleDeg = deg(atan2((hipMid.x-shoulderMid.x), -(hipMid.y-shoulderMid.y)))",
+        "unit": "deg",
+        "meaning": ">0 leans to image right; <0 leans to image left",
+        "notes": "",
+        "requires": [
+          "pose"
+        ],
+        "computeTier": "T0",
+        "updateHz": 15,
+        "outputs": [
+          "torsoLeanAngleDeg"
+        ]
+      },
+      "trigger": {
+        "withRef": {
+          "error": "torsoLeanAngleDeg - target.torsoLeanAngleDeg",
+          "warn": {
+            "abs>": 10
+          },
+          "hard": {
+            "abs>": 16
+          },
+          "exit": {
+            "abs<=": 6
+          }
+        },
+        "noRef": {
+          "idealAbsMaxDeg": 6,
+          "warn": {
+            "abs>": 10
+          },
+          "hard": {
+            "abs>": 16
+          },
+          "exit": {
+            "abs<=": 6
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "shift_left_to_center"
+        },
+        "whenNegative": {
+          "action": "shift_right_to_center"
+        }
+      },
+      "script": {
+        "zh": [
+          "身体立直",
+          "别歪，回正",
+          "站直一点"
+        ],
+        "en": [
+          "Stand straight",
+          "Straighten up",
+          "Back to center"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "vertical_guide",
+        "line": "torsoLine",
+        "arrow": "back_to_vertical"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/base/TORSO_STRAIGHTEN_before.jpg",
+        "afterImage": "QA/base/TORSO_STRAIGHTEN_after.jpg",
+        "beforeExpected": "Must trigger (hard): |torsoLeanAngleDeg| > 16° and selectedCueId=TORSO_STRAIGHTEN for >=persistFrames.",
+        "afterExpected": "Must clear: |torsoLeanAngleDeg| < 6° and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "HEAD_LEVEL",
+      "scene": "base",
+      "priority": 3,
+      "mutexGroup": "HEAD_TILT",
+      "metric": {
+        "landmarks": [
+          "face.leftEyeCenter",
+          "face.rightEyeCenter"
+        ],
+        "formula": "eyeLineAngleDeg = deg(atan2(rEye.y - lEye.y, rEye.x - lEye.x))",
+        "unit": "deg",
+        "meaning": "abs(angle) indicates head tilt; sign indicates which side is lower",
+        "notes": "",
+        "requires": [
+          "face"
+        ],
+        "computeTier": "T0",
+        "updateHz": 15,
+        "outputs": [
+          "eyeLineAngleDeg"
+        ]
+      },
+      "trigger": {
+        "withRef": {
+          "error": "eyeLineAngleDeg - target.eyeLineAngleDeg",
+          "warn": {
+            "abs>": 7
+          },
+          "hard": {
+            "abs>": 12
+          },
+          "exit": {
+            "abs<=": 4
+          }
+        },
+        "noRef": {
+          "idealAbsMaxDeg": 4,
+          "warn": {
+            "abs>": 7
+          },
+          "hard": {
+            "abs>": 12
+          },
+          "exit": {
+            "abs<=": 4
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "raise_right_side_or_tilt_left"
+        },
+        "whenNegative": {
+          "action": "raise_left_side_or_tilt_right"
+        }
+      },
+      "script": {
+        "zh": [
+          "头正一点",
+          "别歪头",
+          "头摆正"
+        ],
+        "en": [
+          "Level your head",
+          "Don’t tilt",
+          "Head straight"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "horizontal_guide",
+        "line": "eyeLine",
+        "arrow": "tilt_correction"
+      },
+      "confidence": {
+        "minConfidence": 0.6,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/base/HEAD_LEVEL_before.jpg",
+        "afterImage": "QA/base/HEAD_LEVEL_after.jpg",
+        "beforeExpected": "Must trigger (hard): |eyeLineAngleDeg| > 12° and selectedCueId=HEAD_LEVEL for >=persistFrames.",
+        "afterExpected": "Must clear: |eyeLineAngleDeg| < 4° and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "CHIN_DOWN",
+      "scene": "base",
+      "priority": 3,
+      "mutexGroup": "CHIN",
+      "metric": {
+        "landmarks": [
+          "face.noseTip",
+          "face.chinCenter",
+          "face.faceBBox"
+        ],
+        "formula": "noseToChinRatio = dist(noseTip, chinCenter) / faceBBox.h",
+        "unit": "ratio",
+        "meaning": "Heuristic; requires calibration by device + distance",
+        "notes": "",
+        "requires": [
+          "face"
+        ],
+        "computeTier": "T0",
+        "updateHz": 15,
+        "outputs": [
+          "noseToChinRatio"
+        ]
+      },
+      "trigger": {
+        "withRef": {
+          "error": "noseToChinRatio - target.noseToChinRatio",
+          "warn": {
+            "<": -0.02
+          },
+          "hard": {
+            "<": -0.04
+          },
+          "exit": {
+            "between": [
+              0.36,
+              0.42
+            ]
+          }
+        },
+        "noRef": {
+          "idealRange": [
+            0.36,
+            0.42
+          ],
+          "warn": {
+            "<": 0.34
+          },
+          "hard": {
+            "<": 0.32
+          },
+          "exit": {
+            "between": [
+              0.36,
+              0.42
+            ]
+          }
+        }
+      },
+      "direction": {
+        "type": "range",
+        "whenBelow": {
+          "action": "chin_down_tuck"
+        },
+        "whenAbove": {
+          "action": "none"
+        }
+      },
+      "script": {
+        "zh": [
+          "下巴收一点",
+          "下巴微收",
+          "下巴往里一点"
+        ],
+        "en": [
+          "Chin down a touch",
+          "Tuck chin slightly",
+          "Chin in a bit"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "arrow",
+        "anchor": "face.chinCenter",
+        "direction": "up",
+        "highlight": "faceBBox"
+      },
+      "confidence": {
+        "minConfidence": 0.65,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/base/CHIN_DOWN_before.jpg",
+        "afterImage": "QA/base/CHIN_DOWN_after.jpg",
+        "beforeExpected": "Must trigger (hard): noseToChinRatio < 0.32 and selectedCueId=CHIN_DOWN for >=persistFrames (thresholds are calibratable).",
+        "afterExpected": "Must clear: noseToChinRatio between [0.36,0.42] and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "CHIN_UP",
+      "scene": "base",
+      "priority": 3,
+      "mutexGroup": "CHIN",
+      "metric": {
+        "landmarks": [
+          "face.noseTip",
+          "face.chinCenter",
+          "face.faceBBox"
+        ],
+        "formula": "noseToChinRatio = dist(noseTip, chinCenter) / faceBBox.h",
+        "unit": "ratio",
+        "meaning": "Heuristic; requires calibration by device + distance",
+        "notes": "",
+        "requires": [
+          "face"
+        ],
+        "computeTier": "T0",
+        "updateHz": 15,
+        "outputs": [
+          "noseToChinRatio"
+        ]
+      },
+      "trigger": {
+        "withRef": {
+          "error": "noseToChinRatio - target.noseToChinRatio",
+          "warn": {
+            ">": 0.02
+          },
+          "hard": {
+            ">": 0.04
+          },
+          "exit": {
+            "between": [
+              0.36,
+              0.42
+            ]
+          }
+        },
+        "noRef": {
+          "idealRange": [
+            0.36,
+            0.42
+          ],
+          "warn": {
+            ">": 0.44
+          },
+          "hard": {
+            ">": 0.46
+          },
+          "exit": {
+            "between": [
+              0.36,
+              0.42
+            ]
+          }
+        }
+      },
+      "direction": {
+        "type": "range",
+        "whenAbove": {
+          "action": "chin_up"
+        },
+        "whenBelow": {
+          "action": "none"
+        }
+      },
+      "script": {
+        "zh": [
+          "下巴抬一点",
+          "抬一点点就好",
+          "下巴往上"
+        ],
+        "en": [
+          "Chin up a touch",
+          "Lift chin slightly",
+          "Chin up a bit"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "arrow",
+        "anchor": "face.chinCenter",
+        "direction": "down",
+        "highlight": "faceBBox"
+      },
+      "confidence": {
+        "minConfidence": 0.65,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/base/CHIN_UP_before.jpg",
+        "afterImage": "QA/base/CHIN_UP_after.jpg",
+        "beforeExpected": "Must trigger (hard): noseToChinRatio > 0.46 and selectedCueId=CHIN_UP for >=persistFrames (thresholds are calibratable).",
+        "afterExpected": "Must clear: noseToChinRatio between [0.36,0.42] and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "HAND_OFF_FACE",
+      "scene": "base",
+      "priority": 3,
+      "mutexGroup": "HANDS",
+      "metric": {
+        "landmarks": [
+          "face.faceBBox",
+          "body.leftWrist",
+          "body.rightWrist"
+        ],
+        "formula": "faceCenter = center(faceBBox); minDistRatio = min(dist(leftWrist, faceCenter), dist(rightWrist, faceCenter)) / faceBBox.w",
+        "unit": "ratio",
+        "meaning": "Smaller means hands are too close to face (likely blocking)",
+        "notes": "",
+        "requires": [
+          "pose",
+          "face"
+        ],
+        "computeTier": "T0",
+        "updateHz": 15
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "idealMin": 0.3,
+          "warn": {
+            "<": 0.24
+          },
+          "hard": {
+            "<": 0.18
+          },
+          "exit": {
+            ">=": 0.3
+          }
+        }
+      },
+      "direction": {
+        "type": "range",
+        "whenBelow": {
+          "action": "move_hand_away",
+          "target": "nearestWrist"
+        },
+        "whenAbove": {
+          "action": "none"
+        }
+      },
+      "script": {
+        "zh": [
+          "手别挡脸",
+          "手挪开一点",
+          "手放下去"
+        ],
+        "en": [
+          "Keep hands off your face",
+          "Move your hand away",
+          "Hands down a bit"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "highlight_then_arrow",
+        "highlight": "faceBBox",
+        "arrow": "nearestWrist_down"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/base/HAND_OFF_FACE_before.jpg",
+        "afterImage": "QA/base/HAND_OFF_FACE_after.jpg",
+        "beforeExpected": "Must trigger (hard): minDistRatio < 0.18 and selectedCueId=HAND_OFF_FACE for >=persistFrames.",
+        "afterExpected": "Must clear: minDistRatio >= 0.30 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "ARMS_RELAX",
+      "scene": "base",
+      "priority": 3,
+      "mutexGroup": "ARMS",
+      "metric": {
+        "landmarks": [
+          "body.leftShoulder",
+          "body.leftElbow",
+          "body.leftWrist",
+          "body.rightShoulder",
+          "body.rightElbow",
+          "body.rightWrist"
+        ],
+        "formula": "minElbowAngleDeg = min(angle(lShoulder,lElbow,lWrist), angle(rShoulder,rElbow,rWrist))",
+        "unit": "deg",
+        "meaning": "Too small => arms too tight/curling",
+        "notes": "",
+        "requires": [
+          "pose"
+        ],
+        "computeTier": "T0",
+        "updateHz": 15
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "idealMin": 60,
+          "warn": {
+            "<": 50
+          },
+          "hard": {
+            "<": 40
+          },
+          "exit": {
+            ">=": 60
+          }
+        }
+      },
+      "direction": {
+        "type": "range",
+        "whenBelow": {
+          "action": "relax_arms"
+        },
+        "whenAbove": {
+          "action": "none"
+        }
+      },
+      "script": {
+        "zh": [
+          "手放松一点",
+          "别用力，松一点",
+          "手臂自然点"
+        ],
+        "en": [
+          "Relax your arms",
+          "Loosen up",
+          "Keep arms natural"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "soft_pulse",
+        "highlight": "armPolylines"
+      },
+      "confidence": {
+        "minConfidence": 0.5,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 7,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/base/ARMS_RELAX_before.jpg",
+        "afterImage": "QA/base/ARMS_RELAX_after.jpg",
+        "beforeExpected": "Must trigger (hard): minElbowAngleDeg < 40° and selectedCueId=ARMS_RELAX for >=persistFrames.",
+        "afterExpected": "Must clear: minElbowAngleDeg >= 60° and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "SHOULDERS_OPEN",
+      "scene": "base",
+      "priority": 3,
+      "mutexGroup": "POSTURE",
+      "metric": {
+        "landmarks": [
+          "body.leftShoulder",
+          "body.rightShoulder",
+          "body.leftHip",
+          "body.rightHip"
+        ],
+        "formula": "ratio = dist(lShoulder,rShoulder) / dist(lHip,rHip)",
+        "unit": "ratio",
+        "meaning": "Heuristic: lower ratio may indicate hunch/closed shoulders",
+        "notes": "",
+        "requires": [
+          "pose"
+        ],
+        "computeTier": "T0",
+        "updateHz": 15
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "idealMin": 0.95,
+          "warn": {
+            "<": 0.9
+          },
+          "hard": {
+            "<": 0.85
+          },
+          "exit": {
+            ">=": 0.95
+          }
+        }
+      },
+      "direction": {
+        "type": "range",
+        "whenBelow": {
+          "action": "open_shoulders"
+        },
+        "whenAbove": {
+          "action": "none"
+        }
+      },
+      "script": {
+        "zh": [
+          "肩打开",
+          "胸打开一点",
+          "别含胸"
+        ],
+        "en": [
+          "Open your shoulders",
+          "Chest open",
+          "Don’t hunch"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "arrows_outward",
+        "anchors": [
+          "body.leftShoulder",
+          "body.rightShoulder"
+        ],
+        "highlight": "shoulderLine"
+      },
+      "confidence": {
+        "minConfidence": 0.5,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 7,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/base/SHOULDERS_OPEN_before.jpg",
+        "afterImage": "QA/base/SHOULDERS_OPEN_after.jpg",
+        "beforeExpected": "Must trigger (hard): ratio < 0.85 and selectedCueId=SHOULDERS_OPEN for >=persistFrames.",
+        "afterExpected": "Must clear: ratio >= 0.95 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "WEIGHT_SHIFT",
+      "scene": "base",
+      "priority": 3,
+      "mutexGroup": "STANCE",
+      "metric": {
+        "landmarks": [
+          "body.leftHip",
+          "body.rightHip",
+          "body.leftAnkle",
+          "body.rightAnkle"
+        ],
+        "formula": "offset = hipMid.x - ankleMid.x",
+        "unit": "normalized",
+        "meaning": "Near 0 can look stiff; stylistic hint only",
+        "notes": "",
+        "requires": [
+          "pose"
+        ],
+        "computeTier": "T0",
+        "updateHz": 15
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "warn": {
+            "abs<": 0.01
+          },
+          "hard": null,
+          "exit": {
+            "abs>=": 0.02
+          }
+        }
+      },
+      "direction": {
+        "type": "abs",
+        "whenWithin": {
+          "action": "shift_weight",
+          "direction": "random_left_or_right"
+        }
+      },
+      "script": {
+        "zh": [
+          "重心压一边",
+          "站得松一点",
+          "把重心放一条腿"
+        ],
+        "en": [
+          "Shift your weight",
+          "Put weight on one leg",
+          "Relax your stance"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "arrow",
+        "anchor": "hipMid",
+        "direction": "random_left_or_right",
+        "highlight": "hipLine"
+      },
+      "confidence": {
+        "minConfidence": 0.5,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 8,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/base/WEIGHT_SHIFT_before.jpg",
+        "afterImage": "QA/base/WEIGHT_SHIFT_after.jpg",
+        "beforeExpected": "Must trigger: abs(offset) < 0.01 and selectedCueId=WEIGHT_SHIFT for >=persistFrames.",
+        "afterExpected": "Must clear: abs(offset) > 0.02 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "FRAME_GENERAL",
+      "scene": "base",
+      "priority": 1,
+      "mutexGroup": "FALLBACK",
+      "metric": {
+        "landmarks": [],
+        "formula": "system_fallback_when_tracking_unreliable",
+        "unit": "n/a",
+        "meaning": "Fallback when required landmarks are missing or multi-person/occlusion makes target unstable",
+        "notes": "",
+        "requires": [],
+        "computeTier": "fallback",
+        "updateHz": 15
+      },
+      "trigger": {
+        "system": {
+          "when": [
+            "avgConfidence(requiredLandmarks) < minConfidence",
+            "trackingLost > 300ms",
+            "multiPersonTargetUnstable == true"
+          ]
+        }
+      },
+      "direction": {
+        "type": "none"
+      },
+      "script": {
+        "zh": [
+          "停一下",
+          "站稳",
+          "别动"
+        ],
+        "en": [
+          "Hold still",
+          "Stay steady",
+          "Don’t move"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "reticle",
+        "style": "light"
+      },
+      "confidence": {
+        "minConfidence": 0.5,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 3,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/base/FRAME_GENERAL_before.jpg",
+        "afterImage": "QA/base/FRAME_GENERAL_after.jpg",
+        "beforeExpected": "Must trigger when tracking is unreliable (low confidence / multi-person unstable / lost). selectedCueId=FRAME_GENERAL.",
+        "afterExpected": "Must clear when tracking recovers: cue replaced by a more specific cue or none."
+      }
+    },
+    {
+      "id": "CAFE_01_FACE_TOO_DARK",
+      "scene": "cafe",
+      "priority": 5,
+      "mutexGroup": "LIGHT_FACE",
+      "metric": {
+        "landmarks": [
+          "face.faceBBox"
+        ],
+        "formula": "faceLumaMean = meanLuma(faceROI); error = 0.42 - faceLumaMean",
+        "unit": "luma",
+        "meaning": "Face too dark (often backlit / low light)",
+        "notes": "",
+        "requires": [
+          "face",
+          "frame"
+        ],
+        "computeTier": "T1",
+        "updateHz": 2,
+        "outputs": [
+          "faceLumaMean"
+        ],
+        "frame": {
+          "luma": true
+        },
+        "roisUsed": [
+          "faceROI"
+        ]
+      },
+      "trigger": {
+        "withRef": {
+          "error": "faceLumaMean - target.faceLumaMean",
+          "warn": {
+            "<": -0.08
+          },
+          "hard": {
+            "<": -0.14
+          },
+          "exit": {
+            ">=": 0.0
+          }
+        },
+        "noRef": {
+          "warn": {
+            ">": 0.08
+          },
+          "hard": {
+            ">": 0.14
+          },
+          "exit": {
+            "<=": 0.0
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "turn_toward_light"
+        }
+      },
+      "script": {
+        "zh": [
+          "脸转向光",
+          "往光那边转一点",
+          "靠近窗边一点"
+        ],
+        "en": [
+          "Turn toward the light",
+          "Face the light a bit more",
+          "Step closer to the window"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "highlight+arrow",
+        "highlight": "faceBBox",
+        "arrow": "toward_brighter_side"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/cafe/CAFE_01_FACE_TOO_DARK_before.jpg",
+        "afterImage": "QA/cafe/CAFE_01_FACE_TOO_DARK_after.jpg",
+        "beforeExpected": "Must trigger (hard): faceLumaMean <= 0.34 and selectedCueId=CAFE_01_FACE_TOO_DARK for >=persistFrames.",
+        "afterExpected": "Must clear: faceLumaMean >= 0.42 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "CAFE_02_FACE_BACKLIT",
+      "scene": "cafe",
+      "priority": 5,
+      "mutexGroup": "LIGHT_BG",
+      "metric": {
+        "landmarks": [
+          "face.faceBBox"
+        ],
+        "formula": "faceLumaMean = meanLuma(faceROI); bgLumaMean = meanLuma(bgROI); lumaRatio = faceLumaMean / (bgLumaMean+0.01); error = 0.75 - lumaRatio",
+        "unit": "ratio",
+        "meaning": "Backlight: face much darker than background",
+        "notes": "",
+        "requires": [
+          "face",
+          "frame"
+        ],
+        "computeTier": "T1",
+        "updateHz": 2,
+        "frame": {
+          "luma": true
+        },
+        "roisUsed": [
+          "bgROI",
+          "faceROI"
+        ]
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "warn": {
+            ">": 0.2
+          },
+          "hard": {
+            ">": 0.35
+          },
+          "exit": {
+            "<=": 0.0
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "avoid_backlight_move_inward"
+        }
+      },
+      "script": {
+        "zh": [
+          "别顶着窗，挪开一点",
+          "换个角度避开背光",
+          "往里走一点"
+        ],
+        "en": [
+          "Move off the window",
+          "Change angle to avoid backlight",
+          "Step a bit inward"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "highlight+arrow",
+        "highlight": "bright_bg_region",
+        "arrow": "away_from_bright_side"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/cafe/CAFE_02_FACE_BACKLIT_before.jpg",
+        "afterImage": "QA/cafe/CAFE_02_FACE_BACKLIT_after.jpg",
+        "beforeExpected": "Must trigger: lumaRatio <= 0.55 (warn/hard depending) and selectedCueId=CAFE_02_FACE_BACKLIT for >=persistFrames.",
+        "afterExpected": "Must clear: lumaRatio >= 0.75 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "CAFE_03_FACE_OVEREXPOSED",
+      "scene": "cafe",
+      "priority": 5,
+      "mutexGroup": "LIGHT_FACE",
+      "metric": {
+        "landmarks": [
+          "face.faceBBox"
+        ],
+        "formula": "clip = highlightClipPct(faceROI); error = clip - 0.06",
+        "unit": "pct",
+        "meaning": "Face highlights clipped (overexposed)",
+        "notes": "",
+        "requires": [
+          "face",
+          "frame"
+        ],
+        "computeTier": "T1",
+        "updateHz": 2,
+        "frame": {
+          "luma": true
+        },
+        "roisUsed": [
+          "faceROI"
+        ]
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "warn": {
+            ">": 0.04
+          },
+          "hard": {
+            ">": 0.1
+          },
+          "exit": {
+            "<=": 0.0
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "reduce_face_overexposure_step_off_window"
+        }
+      },
+      "script": {
+        "zh": [
+          "离窗远一点",
+          "脸别正对窗",
+          "转开一点点"
+        ],
+        "en": [
+          "Step away from the window",
+          "Don’t face the window directly",
+          "Turn slightly off"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "highlight",
+        "highlight": "face_overexposed_pixels",
+        "hint": "move_off_bright"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/cafe/CAFE_03_FACE_OVEREXPOSED_before.jpg",
+        "afterImage": "QA/cafe/CAFE_03_FACE_OVEREXPOSED_after.jpg",
+        "beforeExpected": "Must trigger (hard): highlightClipPct(faceROI) >= 0.16 and selectedCueId=CAFE_03_FACE_OVEREXPOSED for >=persistFrames.",
+        "afterExpected": "Must clear: highlightClipPct(faceROI) <= 0.06 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "CAFE_04_FACE_TOO_FLAT",
+      "scene": "cafe",
+      "priority": 4,
+      "mutexGroup": "LIGHT_FACE",
+      "metric": {
+        "landmarks": [
+          "face.faceBBox"
+        ],
+        "formula": "faceHalfDiff = meanLuma(faceLeftHalf)-meanLuma(faceRightHalf); error = 0.06 - abs(faceHalfDiff)",
+        "unit": "luma_diff",
+        "meaning": "Face lighting too flat; needs slight side light",
+        "notes": "",
+        "requires": [
+          "face",
+          "frame"
+        ],
+        "computeTier": "T1",
+        "updateHz": 2,
+        "frame": {
+          "luma": true
+        },
+        "roisUsed": [
+          "faceLeftHalf",
+          "faceRightHalf"
+        ]
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "warn": {
+            ">": 0.03
+          },
+          "hard": {
+            ">": 0.06
+          },
+          "exit": {
+            "<=": 0.0
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "turn_face_10_15_deg_toward_brighter_side"
+        }
+      },
+      "script": {
+        "zh": [
+          "头转一点点",
+          "脸转10度",
+          "侧一点更好看"
+        ],
+        "en": [
+          "Turn your face slightly",
+          "Rotate about 10 degrees",
+          "A bit more to the side"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "arrow",
+        "anchor": "faceCenter",
+        "direction": "toward_brighter_side",
+        "highlight": "faceBBox"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/cafe/CAFE_04_FACE_TOO_FLAT_before.jpg",
+        "afterImage": "QA/cafe/CAFE_04_FACE_TOO_FLAT_after.jpg",
+        "beforeExpected": "Must trigger: abs(faceHalfDiff) <= 0.03 and selectedCueId=CAFE_04_FACE_TOO_FLAT for >=persistFrames.",
+        "afterExpected": "Must clear: abs(faceHalfDiff) >= 0.06 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "CAFE_05_WB_TOO_YELLOW",
+      "scene": "cafe",
+      "priority": 4,
+      "mutexGroup": "WB",
+      "metric": {
+        "landmarks": [
+          "frame.whiteBalance"
+        ],
+        "formula": "error = 3600 - colorTempK",
+        "unit": "kelvin",
+        "meaning": "White balance too warm/yellow indoors",
+        "notes": "",
+        "requires": [
+          "frame",
+          "face"
+        ],
+        "computeTier": "T1",
+        "updateHz": 1
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "warn": {
+            ">": 500
+          },
+          "hard": {
+            ">": 900
+          },
+          "exit": {
+            "<=": 0
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "move_off_warm_lamp_find_neutral"
+        }
+      },
+      "script": {
+        "zh": [
+          "别站灯下，挪开一点",
+          "去中性光那边",
+          "靠近窗边一点"
+        ],
+        "en": [
+          "Move off the warm lamp",
+          "Find neutral light",
+          "Closer to the window"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "highlight+arrow",
+        "highlight": "top_hotspot_region",
+        "arrow": "away_from_hotspot"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/cafe/CAFE_05_WB_TOO_YELLOW_before.jpg",
+        "afterImage": "QA/cafe/CAFE_05_WB_TOO_YELLOW_after.jpg",
+        "beforeExpected": "Must trigger: colorTempK <= 3000K and selectedCueId=CAFE_05_WB_TOO_YELLOW for >=persistFrames.",
+        "afterExpected": "Must clear: colorTempK >= 3600K and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "CAFE_06_WB_MIXED_LIGHT",
+      "scene": "cafe",
+      "priority": 4,
+      "mutexGroup": "WB",
+      "metric": {
+        "landmarks": [
+          "frame.whiteBalance",
+          "face.faceBBox"
+        ],
+        "formula": "error = abs(colorTempLeftK - colorTempRightK)",
+        "unit": "kelvin",
+        "meaning": "Mixed lighting across face",
+        "notes": "",
+        "requires": [
+          "frame",
+          "face"
+        ],
+        "computeTier": "T1",
+        "updateHz": 1
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "warn": {
+            ">": 700
+          },
+          "hard": {
+            ">": 1200
+          },
+          "exit": {
+            "<=": 700
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "move_into_single_light_zone"
+        }
+      },
+      "script": {
+        "zh": [
+          "别卡在两种光中间",
+          "往这边走一点",
+          "换到同一片光里"
+        ],
+        "en": [
+          "Don’t stand between two lights",
+          "Move a bit to one side",
+          "Stay in one light zone"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "arrow",
+        "anchor": "faceCenter",
+        "direction": "toward_lower_temp_diff_side",
+        "highlight": "faceBBox"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/cafe/CAFE_06_WB_MIXED_LIGHT_before.jpg",
+        "afterImage": "QA/cafe/CAFE_06_WB_MIXED_LIGHT_after.jpg",
+        "beforeExpected": "Must trigger (hard): abs(tempLeft-tempRight) >= 1200K and selectedCueId=CAFE_06_WB_MIXED_LIGHT for >=persistFrames.",
+        "afterExpected": "Must clear: abs(tempLeft-tempRight) <= 700K and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "CAFE_07_BG_TOO_BUSY",
+      "scene": "cafe",
+      "priority": 4,
+      "mutexGroup": "BG_CLUTTER",
+      "metric": {
+        "landmarks": [
+          "face.faceBBox"
+        ],
+        "formula": "edgeDensityBG = sobelEdgeDensity(BG_Ring_ROI); error = edgeDensityBG - 0.42",
+        "unit": "normalized",
+        "meaning": "Background clutter (high edge density)",
+        "notes": "",
+        "requires": [
+          "face",
+          "frame"
+        ],
+        "computeTier": "T1",
+        "updateHz": 2,
+        "frame": {
+          "luma": true
+        },
+        "roisUsed": [
+          "BG_Ring_ROI"
+        ]
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "warn": {
+            ">": 0.1
+          },
+          "hard": {
+            ">": 0.18
+          },
+          "exit": {
+            "<=": 0.0
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "move_sideways_find_clean_bg"
+        }
+      },
+      "script": {
+        "zh": [
+          "背景太乱，挪一步",
+          "往旁边走一点",
+          "换个更干净的背景"
+        ],
+        "en": [
+          "Background is busy—step aside",
+          "Move a bit sideways",
+          "Find a cleaner background"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "highlight+arrow",
+        "highlight": "BG_ROI",
+        "arrow": "toward_cleaner_side"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/cafe/CAFE_07_BG_TOO_BUSY_before.jpg",
+        "afterImage": "QA/cafe/CAFE_07_BG_TOO_BUSY_after.jpg",
+        "beforeExpected": "Must trigger (hard): edgeDensityBG >= 0.60 and selectedCueId=CAFE_07_BG_TOO_BUSY for >=persistFrames.",
+        "afterExpected": "Must clear: edgeDensityBG <= 0.42 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "CAFE_08_BG_BRIGHT_SPOT",
+      "scene": "cafe",
+      "priority": 4,
+      "mutexGroup": "BG_CLUTTER",
+      "metric": {
+        "landmarks": [
+          "face.faceBBox"
+        ],
+        "formula": "clip = highlightClipPct(upperBGROI); error = clip - 0.03",
+        "unit": "pct",
+        "meaning": "Bright hotspot in background (lamp/sign)",
+        "notes": "",
+        "requires": [
+          "face",
+          "frame"
+        ],
+        "computeTier": "T1",
+        "updateHz": 2,
+        "frame": {
+          "luma": true
+        },
+        "roisUsed": [
+          "upperBGROI"
+        ]
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "warn": {
+            ">": 0.03
+          },
+          "hard": {
+            ">": 0.07
+          },
+          "exit": {
+            "<=": 0.0
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "avoid_bright_spot_move"
+        }
+      },
+      "script": {
+        "zh": [
+          "避开后面那盏灯",
+          "别让亮点在头后面",
+          "挪开一点就好"
+        ],
+        "en": [
+          "Move off that bright spot",
+          "Don’t put lights behind your head",
+          "Shift a little"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "highlight+arrow",
+        "highlight": "largest_hotspot_in_upperBG",
+        "arrow": "away_from_hotspot"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/cafe/CAFE_08_BG_BRIGHT_SPOT_before.jpg",
+        "afterImage": "QA/cafe/CAFE_08_BG_BRIGHT_SPOT_after.jpg",
+        "beforeExpected": "Must trigger (hard): highlightClipPct(upperBGROI) >= 0.10 and selectedCueId=CAFE_08_BG_BRIGHT_SPOT for >=persistFrames.",
+        "afterExpected": "Must clear: highlightClipPct(upperBGROI) <= 0.03 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "CAFE_09_GLASSES_GLARE",
+      "scene": "cafe",
+      "priority": 4,
+      "mutexGroup": "GLASSES",
+      "metric": {
+        "landmarks": [
+          "face.leftEyeCenter",
+          "face.rightEyeCenter",
+          "face.faceBBox"
+        ],
+        "formula": "clip = highlightClipPct(eyeROI); error = clip - 0.05",
+        "unit": "pct",
+        "meaning": "Glasses glare (specular highlights over eyes)",
+        "notes": "",
+        "requires": [
+          "face",
+          "frame"
+        ],
+        "computeTier": "T1",
+        "updateHz": 2,
+        "frame": {
+          "luma": true
+        },
+        "roisUsed": [
+          "eyeROI"
+        ]
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "warn": {
+            ">": 0.04
+          },
+          "hard": {
+            ">": 0.1
+          },
+          "exit": {
+            "<=": 0.0
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "reduce_glare_turn_head_or_tuck_chin"
+        }
+      },
+      "script": {
+        "zh": [
+          "眼镜反光，头转一点",
+          "下巴收一点点",
+          "别正对灯"
+        ],
+        "en": [
+          "Glare—turn your head slightly",
+          "Tuck chin a touch",
+          "Don’t face the lamp"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "highlight+arrow",
+        "highlight": "eyeROI",
+        "arrow": "turn_toward_less_glare"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/cafe/CAFE_09_GLASSES_GLARE_before.jpg",
+        "afterImage": "QA/cafe/CAFE_09_GLASSES_GLARE_after.jpg",
+        "beforeExpected": "Must trigger (hard): highlightClipPct(eyeROI) >= 0.15 and selectedCueId=CAFE_09_GLASSES_GLARE for >=persistFrames.",
+        "afterExpected": "Must clear: highlightClipPct(eyeROI) <= 0.05 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "CAFE_10_LOW_LIGHT_STEADY",
+      "scene": "cafe",
+      "priority": 5,
+      "mutexGroup": "MOTION",
+      "metric": {
+        "landmarks": [
+          "device.motionRms"
+        ],
+        "formula": "error = motionRms - 0.9",
+        "unit": "motion",
+        "meaning": "Low-light shake risk (device motion)",
+        "notes": "motionRms should be derived from device.motion (e.g., RMS of accel+gyro over ~250ms).",
+        "requires": [
+          "motion"
+        ],
+        "computeTier": "T1",
+        "updateHz": 30
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "warn": {
+            ">": 0.4
+          },
+          "hard": {
+            ">": 0.9
+          },
+          "exit": {
+            "<=": 0.0
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "hold_still_one_second"
+        }
+      },
+      "script": {
+        "zh": [
+          "别动，停一秒",
+          "稳住一下",
+          "停一下再拍"
+        ],
+        "en": [
+          "Hold still—one second",
+          "Stay steady",
+          "Pause, then shoot"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "reticle",
+        "style": "steady_meter"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 4,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/cafe/CAFE_10_LOW_LIGHT_STEADY_before.jpg",
+        "afterImage": "QA/cafe/CAFE_10_LOW_LIGHT_STEADY_after.jpg",
+        "beforeExpected": "Must trigger (hard): motionRms >= 1.8 and selectedCueId=CAFE_10_LOW_LIGHT_STEADY for >=persistFrames(4).",
+        "afterExpected": "Must clear: motionRms <= 0.9 and cue not selected for >=persistFrames(4)."
+      }
+    },
+    {
+      "id": "CAFE_11_EYES_TOWARD_LIGHT",
+      "scene": "cafe",
+      "priority": 2,
+      "mutexGroup": "LIGHT_FACE",
+      "metric": {
+        "landmarks": [
+          "face.leftEyeCenter",
+          "face.rightEyeCenter",
+          "face.faceBBox"
+        ],
+        "formula": "diff = meanLuma(eyeROI) - meanLuma(faceROI); error = 0.08 - diff",
+        "unit": "luma_diff",
+        "meaning": "Eyes too dark / missing catchlight",
+        "notes": "",
+        "requires": [
+          "face",
+          "frame"
+        ],
+        "computeTier": "T1",
+        "updateHz": 2,
+        "frame": {
+          "luma": true
+        },
+        "roisUsed": [
+          "eyeROI",
+          "faceROI"
+        ]
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "warn": {
+            ">": 0.04
+          },
+          "hard": {
+            ">": 0.08
+          },
+          "exit": {
+            "<=": 0.0
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "look_toward_light"
+        }
+      },
+      "script": {
+        "zh": [
+          "眼睛看向光",
+          "看窗边一点",
+          "眼神抬一点找光"
+        ],
+        "en": [
+          "Look toward the light",
+          "Glance toward the window",
+          "Lift your gaze to the light"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "arrow",
+        "anchor": "eyeMid",
+        "direction": "toward_brighter_side",
+        "highlight": "eyeROI"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/cafe/CAFE_11_EYES_TOWARD_LIGHT_before.jpg",
+        "afterImage": "QA/cafe/CAFE_11_EYES_TOWARD_LIGHT_after.jpg",
+        "beforeExpected": "Must trigger: (meanLuma(eyeROI)-meanLuma(faceROI)) <= 0.02 and selectedCueId=CAFE_11_EYES_TOWARD_LIGHT for >=persistFrames.",
+        "afterExpected": "Must clear: diff >= 0.08 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "CAFE_12_CAFE_THIRDS_COMPOSE",
+      "scene": "cafe",
+      "priority": 4,
+      "mutexGroup": "COMPOSE_CAFE",
+      "metric": {
+        "landmarks": [
+          "body.leftShoulder",
+          "body.rightShoulder",
+          "body.leftHip",
+          "body.rightHip"
+        ],
+        "formula": "distToThird = min(abs(personCenter.x-1/3), abs(personCenter.x-2/3))",
+        "unit": "normalized",
+        "meaning": "Rule-of-thirds composition for cafe",
+        "notes": "",
+        "requires": [
+          "pose"
+        ],
+        "computeTier": "T0",
+        "updateHz": 15
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "warn": {
+            ">": 0.1
+          },
+          "hard": {
+            ">": 0.16
+          },
+          "exit": {
+            "<=": 0.06
+          }
+        }
+      },
+      "direction": {
+        "type": "range",
+        "whenAbove": {
+          "action": "move_toward_nearest_third_line"
+        }
+      },
+      "script": {
+        "zh": [
+          "往边上一点",
+          "靠三分线更好看",
+          "往这边挪一点"
+        ],
+        "en": [
+          "Shift toward the side",
+          "Move to the thirds",
+          "A bit this way"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "grid_thirds",
+        "arrow": "toward_nearest_third",
+        "highlight": "personBBox"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/cafe/CAFE_12_CAFE_THIRDS_COMPOSE_before.jpg",
+        "afterImage": "QA/cafe/CAFE_12_CAFE_THIRDS_COMPOSE_after.jpg",
+        "beforeExpected": "Must trigger (hard): distanceToNearestThirdLine >= 0.16 and selectedCueId=CAFE_12_CAFE_THIRDS_COMPOSE for >=persistFrames.",
+        "afterExpected": "Must clear: distanceToNearestThirdLine <= 0.06 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "CAFE_13_KEEP_FACE_CLEAR_OF_MENU",
+      "scene": "cafe",
+      "priority": 4,
+      "mutexGroup": "HANDS",
+      "metric": {
+        "landmarks": [
+          "face.mouthCenter",
+          "body.leftWrist",
+          "body.rightWrist"
+        ],
+        "formula": "gap = mouthCenter.y - min(leftWrist.y,rightWrist.y); error = 0.06 - gap",
+        "unit": "normalized",
+        "meaning": "Prop/cup/menu covering mouth/lower face",
+        "notes": "",
+        "requires": [
+          "pose",
+          "face"
+        ],
+        "computeTier": "T0",
+        "updateHz": 15
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "warn": {
+            ">": 0.03
+          },
+          "hard": {
+            ">": 0.06
+          },
+          "exit": {
+            "<=": 0.0
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "lower_prop_or_hand"
+        }
+      },
+      "script": {
+        "zh": [
+          "杯子放低一点",
+          "别挡嘴巴",
+          "手下来一点"
+        ],
+        "en": [
+          "Lower the cup a bit",
+          "Don’t cover your mouth",
+          "Hands down a touch"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "highlight+arrow",
+        "highlight": "nearestWrist",
+        "arrow": "down"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/cafe/CAFE_13_KEEP_FACE_CLEAR_OF_MENU_before.jpg",
+        "afterImage": "QA/cafe/CAFE_13_KEEP_FACE_CLEAR_OF_MENU_after.jpg",
+        "beforeExpected": "Must trigger: mouthCenter.y - min(wrist.y) <= 0.02 and selectedCueId=CAFE_13_KEEP_FACE_CLEAR_OF_MENU for >=persistFrames.",
+        "afterExpected": "Must clear: gap >= 0.06 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "CAFE_14_SHRUG_DETECTED",
+      "scene": "cafe",
+      "priority": 3,
+      "mutexGroup": "POSTURE",
+      "metric": {
+        "landmarks": [
+          "body.nose",
+          "body.leftShoulder",
+          "body.rightShoulder",
+          "body.leftHip",
+          "body.rightHip"
+        ],
+        "formula": "neckGap = (nose.y - shoulderMid.y)/torsoLen; error = 0.22 - neckGap",
+        "unit": "ratio",
+        "meaning": "Shrugging shoulders (tension)",
+        "notes": "",
+        "requires": [
+          "pose"
+        ],
+        "computeTier": "T0",
+        "updateHz": 15
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "warn": {
+            ">": 0.06
+          },
+          "hard": {
+            ">": 0.1
+          },
+          "exit": {
+            "<=": 0.0
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "drop_shoulders_relax"
+        }
+      },
+      "script": {
+        "zh": [
+          "肩放下来",
+          "别耸肩，松一点",
+          "肩放松就好"
+        ],
+        "en": [
+          "Drop your shoulders",
+          "Relax—no shrug",
+          "Shoulders down"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "arrows_down",
+        "anchors": [
+          "body.leftShoulder",
+          "body.rightShoulder"
+        ]
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/cafe/CAFE_14_SHRUG_DETECTED_before.jpg",
+        "afterImage": "QA/cafe/CAFE_14_SHRUG_DETECTED_after.jpg",
+        "beforeExpected": "Must trigger (hard): neckGapRatio <= 0.12 and selectedCueId=CAFE_14_SHRUG_DETECTED for >=persistFrames.",
+        "afterExpected": "Must clear: neckGapRatio >= 0.22 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "CAFE_15_SEATED_POSTURE_STRAIGHT",
+      "scene": "cafe",
+      "priority": 3,
+      "mutexGroup": "POSTURE",
+      "metric": {
+        "landmarks": [
+          "body.leftShoulder",
+          "body.rightShoulder",
+          "body.leftHip",
+          "body.rightHip"
+        ],
+        "formula": "error = abs(torsoLeanAngleDeg) - 8  # also require likely seated: knees/ankles missing",
+        "unit": "deg",
+        "meaning": "Seated posture: avoid slouch/lean",
+        "notes": "",
+        "requires": [
+          "pose"
+        ],
+        "computeTier": "T0",
+        "updateHz": 15
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "warn": {
+            ">": 6
+          },
+          "hard": {
+            ">": 12
+          },
+          "exit": {
+            "<=": 0.0
+          }
+        }
+      },
+      "direction": {
+        "type": "range",
+        "whenAbove": {
+          "action": "sit_up_straight"
+        }
+      },
+      "script": {
+        "zh": [
+          "坐直一点",
+          "背挺起来",
+          "回正就好"
+        ],
+        "en": [
+          "Sit up straight",
+          "Back straight",
+          "Back to center"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "vertical_guide",
+        "line": "torsoLine",
+        "arrow": "back_to_vertical"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/cafe/CAFE_15_SEATED_POSTURE_STRAIGHT_before.jpg",
+        "afterImage": "QA/cafe/CAFE_15_SEATED_POSTURE_STRAIGHT_after.jpg",
+        "beforeExpected": "Must trigger (hard): abs(torsoLeanAngleDeg) >= 20° (and seated heuristic true) and selectedCueId=CAFE_15_SEATED_POSTURE_STRAIGHT for >=persistFrames.",
+        "afterExpected": "Must clear: abs(torsoLeanAngleDeg) <= 8° and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "OUT_01_FACE_IN_SHADOW",
+      "scene": "outdoor",
+      "priority": 5,
+      "mutexGroup": "SUN_LIGHT",
+      "metric": {
+        "landmarks": [
+          "face.faceBBox"
+        ],
+        "formula": "faceLumaMean = meanLuma(faceROI); error = 0.45 - faceLumaMean",
+        "unit": "luma",
+        "meaning": "Outdoor: face in shadow under harsh light",
+        "notes": "",
+        "requires": [
+          "face",
+          "frame"
+        ],
+        "computeTier": "T1",
+        "updateHz": 2,
+        "frame": {
+          "luma": true
+        },
+        "roisUsed": [
+          "faceROI"
+        ]
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "warn": {
+            ">": 0.1
+          },
+          "hard": {
+            ">": 0.18
+          },
+          "exit": {
+            "<=": 0.0
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "turn_toward_light"
+        }
+      },
+      "script": {
+        "zh": [
+          "脸转向光",
+          "转过来一点更亮",
+          "找亮的那边"
+        ],
+        "en": [
+          "Turn toward the light",
+          "Rotate to the brighter side",
+          "Face the light"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "highlight+arrow",
+        "highlight": "faceBBox",
+        "arrow": "toward_brighter_side"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/outdoor/OUT_01_FACE_IN_SHADOW_before.jpg",
+        "afterImage": "QA/outdoor/OUT_01_FACE_IN_SHADOW_after.jpg",
+        "beforeExpected": "Must trigger (hard): faceLumaMean <= 0.27 and selectedCueId=OUT_01_FACE_IN_SHADOW for >=persistFrames.",
+        "afterExpected": "Must clear: faceLumaMean >= 0.45 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "OUT_02_BACKLIGHT_SILHOUETTE",
+      "scene": "outdoor",
+      "priority": 5,
+      "mutexGroup": "SUN_LIGHT",
+      "metric": {
+        "landmarks": [
+          "face.faceBBox"
+        ],
+        "formula": "faceLumaMean = meanLuma(faceROI); bgLumaMean = meanLuma(bgROI); lumaRatio = faceLumaMean/(bgLumaMean+0.01); error = 0.85 - lumaRatio",
+        "unit": "ratio",
+        "meaning": "Outdoor: backlit silhouette risk",
+        "notes": "",
+        "requires": [
+          "face",
+          "frame"
+        ],
+        "computeTier": "T1",
+        "updateHz": 2,
+        "frame": {
+          "luma": true
+        },
+        "roisUsed": [
+          "bgROI",
+          "faceROI"
+        ]
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "warn": {
+            ">": 0.18
+          },
+          "hard": {
+            ">": 0.32
+          },
+          "exit": {
+            "<=": 0.0
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "avoid_sun_change_angle"
+        }
+      },
+      "script": {
+        "zh": [
+          "别顶着太阳，换个角度",
+          "往这边挪开",
+          "侧一点就好"
+        ],
+        "en": [
+          "Don’t face the sun—change angle",
+          "Move off the sun",
+          "Shift to the side"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "highlight+arrow",
+        "highlight": "sky_bright_region",
+        "arrow": "away_from_bright_side"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/outdoor/OUT_02_BACKLIGHT_SILHOUETTE_before.jpg",
+        "afterImage": "QA/outdoor/OUT_02_BACKLIGHT_SILHOUETTE_after.jpg",
+        "beforeExpected": "Must trigger: lumaRatio <= 0.60 and selectedCueId=OUT_02_BACKLIGHT_SILHOUETTE for >=persistFrames.",
+        "afterExpected": "Must clear: lumaRatio >= 0.85 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "OUT_03_SUN_SQUINT",
+      "scene": "outdoor",
+      "priority": 4,
+      "mutexGroup": "SUN_LIGHT",
+      "metric": {
+        "landmarks": [
+          "face.eyeAR"
+        ],
+        "formula": "error = 0.18 - eyeAR",
+        "unit": "ratio",
+        "meaning": "Outdoor: squinting due to sun",
+        "notes": "Requires face.eyeAR derived from eye contours (Vision face landmarks).",
+        "requires": [
+          "face"
+        ],
+        "computeTier": "T0",
+        "updateHz": 15
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "warn": {
+            ">": 0.04
+          },
+          "hard": {
+            ">": 0.08
+          },
+          "exit": {
+            "<=": 0.0
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "turn_away_find_shade"
+        }
+      },
+      "script": {
+        "zh": [
+          "太阳刺，转个身",
+          "别直对太阳",
+          "找阴影站一下"
+        ],
+        "en": [
+          "Too bright—turn away",
+          "Don’t face the sun",
+          "Step into shade"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "arrow",
+        "anchor": "eyeMid",
+        "direction": "toward_shade_side",
+        "highlight": "eyeROI"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/outdoor/OUT_03_SUN_SQUINT_before.jpg",
+        "afterImage": "QA/outdoor/OUT_03_SUN_SQUINT_after.jpg",
+        "beforeExpected": "Must trigger (hard): eyeAR <= 0.10 and selectedCueId=OUT_03_SUN_SQUINT for >=persistFrames.",
+        "afterExpected": "Must clear: eyeAR >= 0.18 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "OUT_04_SKY_BLOWOUT",
+      "scene": "outdoor",
+      "priority": 4,
+      "mutexGroup": "SKY",
+      "metric": {
+        "landmarks": [
+          "frame.luma"
+        ],
+        "formula": "clip = highlightClipPct(skyROI); error = clip - 0.08",
+        "unit": "pct",
+        "meaning": "Outdoor: sky highlights blown out",
+        "notes": "",
+        "requires": [
+          "face",
+          "frame"
+        ],
+        "computeTier": "T1",
+        "updateHz": 2,
+        "frame": {
+          "luma": true
+        },
+        "roisUsed": [
+          "skyROI"
+        ]
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "warn": {
+            ">": 0.06
+          },
+          "hard": {
+            ">": 0.14
+          },
+          "exit": {
+            "<=": 0.0
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "tilt_camera_down"
+        }
+      },
+      "script": {
+        "zh": [
+          "镜头压低一点",
+          "别拍太多天",
+          "往下收一点"
+        ],
+        "en": [
+          "Tilt down a bit",
+          "Less sky",
+          "Lower the camera slightly"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "highlight+arrow",
+        "highlight": "skyROI",
+        "arrow": "down"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/outdoor/OUT_04_SKY_BLOWOUT_before.jpg",
+        "afterImage": "QA/outdoor/OUT_04_SKY_BLOWOUT_after.jpg",
+        "beforeExpected": "Must trigger (hard): highlightClipPct(skyROI) >= 0.22 and selectedCueId=OUT_04_SKY_BLOWOUT for >=persistFrames.",
+        "afterExpected": "Must clear: highlightClipPct(skyROI) <= 0.08 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "OUT_05_HORIZON_LEVEL",
+      "scene": "outdoor",
+      "priority": 4,
+      "mutexGroup": "HORIZON",
+      "metric": {
+        "landmarks": [
+          "frame.lines"
+        ],
+        "formula": "error = horizonAngleDeg  # ideal 0",
+        "unit": "deg",
+        "meaning": "Outdoor: horizon level",
+        "notes": "",
+        "requires": [
+          "frame"
+        ],
+        "computeTier": "T1",
+        "updateHz": 5
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "warn": {
+            "abs>": 2.5
+          },
+          "hard": {
+            "abs>": 5.0
+          },
+          "exit": {
+            "abs<=": 2.5
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "rotate_phone_counterclockwise"
+        },
+        "whenNegative": {
+          "action": "rotate_phone_clockwise"
+        }
+      },
+      "script": {
+        "zh": [
+          "手机转正",
+          "水平线摆平",
+          "把画面摆平"
+        ],
+        "en": [
+          "Level the phone",
+          "Straighten the horizon",
+          "Keep it level"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "level_indicator",
+        "style": "horizon",
+        "arrow": "rotate"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/outdoor/OUT_05_HORIZON_LEVEL_before.jpg",
+        "afterImage": "QA/outdoor/OUT_05_HORIZON_LEVEL_after.jpg",
+        "beforeExpected": "Must trigger (hard): abs(horizonAngleDeg) >= 5° and selectedCueId=OUT_05_HORIZON_LEVEL for >=persistFrames.",
+        "afterExpected": "Must clear: abs(horizonAngleDeg) <= 2.5° and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "OUT_06_VERTICALS_STRAIGHT",
+      "scene": "outdoor",
+      "priority": 4,
+      "mutexGroup": "BUILDING_VERTICAL",
+      "metric": {
+        "landmarks": [
+          "frame.lines"
+        ],
+        "formula": "error = verticalConvergeDeg  # ideal 0",
+        "unit": "deg",
+        "meaning": "Outdoor: keep verticals straight (avoid keystone)",
+        "notes": "",
+        "requires": [
+          "frame"
+        ],
+        "computeTier": "T1",
+        "updateHz": 5
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "warn": {
+            "abs>": 3.0
+          },
+          "hard": {
+            "abs>": 6.0
+          },
+          "exit": {
+            "abs<=": 3.0
+          }
+        }
+      },
+      "direction": {
+        "type": "abs",
+        "whenExceeded": {
+          "action": "step_back_or_level_camera"
+        }
+      },
+      "script": {
+        "zh": [
+          "别仰拍，后退一点",
+          "镜头放平一点",
+          "机位低一点试试"
+        ],
+        "en": [
+          "Don’t tilt up—step back",
+          "Keep the camera level",
+          "Lower the angle a bit"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "vertical_guides",
+        "count": 2,
+        "arrow": "level_camera"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/outdoor/OUT_06_VERTICALS_STRAIGHT_before.jpg",
+        "afterImage": "QA/outdoor/OUT_06_VERTICALS_STRAIGHT_after.jpg",
+        "beforeExpected": "Must trigger (hard): abs(verticalConvergeDeg) >= 6° and selectedCueId=OUT_06_VERTICALS_STRAIGHT for >=persistFrames.",
+        "afterExpected": "Must clear: abs(verticalConvergeDeg) <= 3° and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "OUT_07_LANDMARK_ALIGN_X",
+      "scene": "outdoor",
+      "priority": 4,
+      "mutexGroup": "LANDMARK_ALIGN",
+      "metric": {
+        "landmarks": [
+          "ref.registration"
+        ],
+        "formula": "error = registrationOffsetX",
+        "unit": "normalized",
+        "meaning": "Reference alignment: horizontal translation",
+        "notes": "",
+        "requires": [
+          "ref"
+        ],
+        "computeTier": "T1",
+        "updateHz": 3
+      },
+      "trigger": {
+        "withRef": {
+          "warn": {
+            "abs>": 0.05
+          },
+          "hard": {
+            "abs>": 0.1
+          },
+          "exit": {
+            "abs<=": 0.05
+          }
+        },
+        "noRef": null
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "move_left_to_match"
+        },
+        "whenNegative": {
+          "action": "move_right_to_match"
+        }
+      },
+      "script": {
+        "zh": [
+          "往左一点，对齐地标",
+          "左边来一点",
+          "再左一点就齐了"
+        ],
+        "en": [
+          "Move left to match",
+          "A bit left",
+          "Almost—slightly left"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "arrow",
+        "anchor": "personCenter",
+        "direction": "left_or_right",
+        "hint": "alignment"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/outdoor/OUT_07_LANDMARK_ALIGN_X_before.jpg",
+        "afterImage": "QA/outdoor/OUT_07_LANDMARK_ALIGN_X_after.jpg",
+        "beforeExpected": "Must trigger (hard): abs(registrationOffsetX) >= 0.10 and selectedCueId=OUT_07_LANDMARK_ALIGN_X for >=persistFrames (ref mode).",
+        "afterExpected": "Must clear: abs(registrationOffsetX) <= 0.05 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "OUT_08_LANDMARK_ALIGN_Y",
+      "scene": "outdoor",
+      "priority": 4,
+      "mutexGroup": "LANDMARK_ALIGN",
+      "metric": {
+        "landmarks": [
+          "ref.registration"
+        ],
+        "formula": "error = registrationOffsetY",
+        "unit": "normalized",
+        "meaning": "Reference alignment: vertical translation",
+        "notes": "",
+        "requires": [
+          "ref"
+        ],
+        "computeTier": "T1",
+        "updateHz": 3
+      },
+      "trigger": {
+        "withRef": {
+          "warn": {
+            "abs>": 0.05
+          },
+          "hard": {
+            "abs>": 0.1
+          },
+          "exit": {
+            "abs<=": 0.05
+          }
+        },
+        "noRef": null
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "move_up_to_match"
+        },
+        "whenNegative": {
+          "action": "move_down_to_match"
+        }
+      },
+      "script": {
+        "zh": [
+          "往上一点，对齐",
+          "上来一点",
+          "再上一点就对了"
+        ],
+        "en": [
+          "Move up to match",
+          "A bit higher",
+          "Up slightly—match it"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "arrow",
+        "anchor": "personCenter",
+        "direction": "up_or_down",
+        "hint": "alignment"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/outdoor/OUT_08_LANDMARK_ALIGN_Y_before.jpg",
+        "afterImage": "QA/outdoor/OUT_08_LANDMARK_ALIGN_Y_after.jpg",
+        "beforeExpected": "Must trigger (hard): abs(registrationOffsetY) >= 0.10 and selectedCueId=OUT_08_LANDMARK_ALIGN_Y for >=persistFrames (ref mode).",
+        "afterExpected": "Must clear: abs(registrationOffsetY) <= 0.05 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "OUT_09_LANDMARK_ALIGN_ROTATE",
+      "scene": "outdoor",
+      "priority": 4,
+      "mutexGroup": "LANDMARK_ALIGN",
+      "metric": {
+        "landmarks": [
+          "ref.registration"
+        ],
+        "formula": "error = registrationRotationDeg",
+        "unit": "deg",
+        "meaning": "Reference alignment: rotation",
+        "notes": "",
+        "requires": [
+          "ref"
+        ],
+        "computeTier": "T1",
+        "updateHz": 3
+      },
+      "trigger": {
+        "withRef": {
+          "warn": {
+            "abs>": 2.0
+          },
+          "hard": {
+            "abs>": 4.0
+          },
+          "exit": {
+            "abs<=": 2.0
+          }
+        },
+        "noRef": null
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "rotate_counterclockwise_to_match"
+        },
+        "whenNegative": {
+          "action": "rotate_clockwise_to_match"
+        }
+      },
+      "script": {
+        "zh": [
+          "转正一点",
+          "顺时针一点",
+          "逆时针一点"
+        ],
+        "en": [
+          "Rotate to match",
+          "A bit clockwise",
+          "A bit counter-clockwise"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "rotate_hint",
+        "arrow": "cw_or_ccw",
+        "showAngle": true
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/outdoor/OUT_09_LANDMARK_ALIGN_ROTATE_before.jpg",
+        "afterImage": "QA/outdoor/OUT_09_LANDMARK_ALIGN_ROTATE_after.jpg",
+        "beforeExpected": "Must trigger (hard): abs(registrationRotationDeg) >= 4° and selectedCueId=OUT_09_LANDMARK_ALIGN_ROTATE for >=persistFrames (ref mode).",
+        "afterExpected": "Must clear: abs(registrationRotationDeg) <= 2° and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "OUT_10_LANDMARK_SCALE_MATCH",
+      "scene": "outdoor",
+      "priority": 4,
+      "mutexGroup": "LANDMARK_ALIGN",
+      "metric": {
+        "landmarks": [
+          "ref.registration"
+        ],
+        "formula": "error = log(registrationScale)",
+        "unit": "log_scale",
+        "meaning": "Reference alignment: distance/scale",
+        "notes": "",
+        "requires": [
+          "ref"
+        ],
+        "computeTier": "T1",
+        "updateHz": 3
+      },
+      "trigger": {
+        "withRef": {
+          "warn": {
+            "abs>": 0.08
+          },
+          "hard": {
+            "abs>": 0.16
+          },
+          "exit": {
+            "abs<=": 0.08
+          }
+        },
+        "noRef": null
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "step_back_to_match"
+        },
+        "whenNegative": {
+          "action": "step_closer_to_match"
+        }
+      },
+      "script": {
+        "zh": [
+          "退后一点更像参考图",
+          "靠近一点",
+          "远近对齐一下"
+        ],
+        "en": [
+          "Step back to match",
+          "Step closer",
+          "Match the distance"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "zoom_hint",
+        "style": "in_or_out",
+        "hint": "alignment"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/outdoor/OUT_10_LANDMARK_SCALE_MATCH_before.jpg",
+        "afterImage": "QA/outdoor/OUT_10_LANDMARK_SCALE_MATCH_after.jpg",
+        "beforeExpected": "Must trigger (hard): abs(log(registrationScale)) >= 0.16 and selectedCueId=OUT_10_LANDMARK_SCALE_MATCH for >=persistFrames (ref mode).",
+        "afterExpected": "Must clear: abs(log(registrationScale)) <= 0.08 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "OUT_11_CROWD_TOO_MUCH",
+      "scene": "outdoor",
+      "priority": 4,
+      "mutexGroup": "CROWD",
+      "metric": {
+        "landmarks": [
+          "frame.people"
+        ],
+        "formula": "error = extraPersonCount - 1",
+        "unit": "count",
+        "meaning": "Outdoor: too many background people",
+        "notes": "",
+        "requires": [
+          "frame"
+        ],
+        "computeTier": "T1",
+        "updateHz": 2
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "warn": {
+            ">=": 1
+          },
+          "hard": {
+            ">=": 3
+          },
+          "exit": {
+            "<=": 0
+          }
+        }
+      },
+      "direction": {
+        "type": "range",
+        "whenAbove": {
+          "action": "move_to_cleaner_spot"
+        }
+      },
+      "script": {
+        "zh": [
+          "人太多，挪一步",
+          "换个更干净的背景",
+          "往旁边走一点"
+        ],
+        "en": [
+          "Too crowded—step aside",
+          "Find a cleaner background",
+          "Move sideways a bit"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "highlight+arrow",
+        "highlight": "extraPersonBoxes",
+        "arrow": "toward_lower_density_side"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/outdoor/OUT_11_CROWD_TOO_MUCH_before.jpg",
+        "afterImage": "QA/outdoor/OUT_11_CROWD_TOO_MUCH_after.jpg",
+        "beforeExpected": "Must trigger (hard): extraPersonCount >= 4 and selectedCueId=OUT_11_CROWD_TOO_MUCH for >=persistFrames.",
+        "afterExpected": "Must clear: extraPersonCount <= 1 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "OUT_12_STRONG_SHADOW_STRIPES",
+      "scene": "outdoor",
+      "priority": 4,
+      "mutexGroup": "SUN_LIGHT",
+      "metric": {
+        "landmarks": [
+          "face.faceBBox"
+        ],
+        "formula": "error = shadowClipPct(faceROI) - 0.10",
+        "unit": "pct",
+        "meaning": "Outdoor: harsh shadow stripes on face",
+        "notes": "",
+        "requires": [
+          "face",
+          "frame"
+        ],
+        "computeTier": "T1",
+        "updateHz": 2,
+        "frame": {
+          "luma": true
+        },
+        "roisUsed": [
+          "faceROI"
+        ]
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "warn": {
+            ">": 0.08
+          },
+          "hard": {
+            ">": 0.16
+          },
+          "exit": {
+            "<=": 0.0
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "step_into_shade_or_change_angle"
+        }
+      },
+      "script": {
+        "zh": [
+          "脸上阴影太硬，换个位置",
+          "走到阴影里",
+          "转开一点"
+        ],
+        "en": [
+          "Harsh shadow—change spot",
+          "Step into shade",
+          "Turn slightly"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "highlight+arrow",
+        "highlight": "faceShadowAreas",
+        "arrow": "toward_even_light"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/outdoor/OUT_12_STRONG_SHADOW_STRIPES_before.jpg",
+        "afterImage": "QA/outdoor/OUT_12_STRONG_SHADOW_STRIPES_after.jpg",
+        "beforeExpected": "Must trigger (hard): shadowClipPct(faceROI) >= 0.26 and selectedCueId=OUT_12_STRONG_SHADOW_STRIPES for >=persistFrames.",
+        "afterExpected": "Must clear: shadowClipPct(faceROI) <= 0.10 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "OUT_13_LENS_FLARE_RISK",
+      "scene": "outdoor",
+      "priority": 4,
+      "mutexGroup": "SKY",
+      "metric": {
+        "landmarks": [
+          "frame.luma"
+        ],
+        "formula": "error = highlightClipPct(top10pctFrame) - 0.12  # plus bgLumaMean very high",
+        "unit": "pct",
+        "meaning": "Outdoor: lens flare risk (sun entering frame)",
+        "notes": "",
+        "requires": [
+          "frame"
+        ],
+        "computeTier": "T1",
+        "updateHz": 2,
+        "frame": {
+          "luma": true
+        },
+        "roisUsed": [
+          "top10pctFrame"
+        ]
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "warn": {
+            ">": 0.08
+          },
+          "hard": {
+            ">": 0.16
+          },
+          "exit": {
+            "<=": 0.0
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "keep_sun_out_shift_or_tilt"
+        }
+      },
+      "script": {
+        "zh": [
+          "别让太阳进镜头",
+          "换一点角度避炫光",
+          "往旁边挪一点"
+        ],
+        "en": [
+          "Keep the sun out of frame",
+          "Shift to avoid flare",
+          "Move a bit"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "highlight+arrow",
+        "highlight": "top_blowout_region",
+        "arrow": "down_or_side"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/outdoor/OUT_13_LENS_FLARE_RISK_before.jpg",
+        "afterImage": "QA/outdoor/OUT_13_LENS_FLARE_RISK_after.jpg",
+        "beforeExpected": "Must trigger (hard): highlightClipPct(top10pctFrame) >= 0.28 and selectedCueId=OUT_13_LENS_FLARE_RISK for >=persistFrames.",
+        "afterExpected": "Must clear: highlightClipPct(top10pctFrame) <= 0.12 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "OUT_14_OUTDOOR_COMPOSE_MORE_LANDMARK",
+      "scene": "outdoor",
+      "priority": 4,
+      "mutexGroup": "COMPOSE_LANDMARK",
+      "metric": {
+        "landmarks": [
+          "body.leftShoulder",
+          "body.rightShoulder",
+          "body.leftHip",
+          "body.rightHip"
+        ],
+        "formula": "error = bboxHeight - 0.62",
+        "unit": "normalized",
+        "meaning": "Outdoor landmark: keep subject less tight to include landmark",
+        "notes": "",
+        "requires": [
+          "pose"
+        ],
+        "computeTier": "T0",
+        "updateHz": 15
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "warn": {
+            ">": 0.1
+          },
+          "hard": {
+            ">": 0.18
+          },
+          "exit": {
+            "<=": 0.0
+          }
+        }
+      },
+      "direction": {
+        "type": "range",
+        "whenAbove": {
+          "action": "step_back_include_landmark"
+        }
+      },
+      "script": {
+        "zh": [
+          "退后一点，把地标带上",
+          "人别太满",
+          "拉远一点更出片"
+        ],
+        "en": [
+          "Step back—include the landmark",
+          "Less tight",
+          "Wider—show the place"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "zoom_hint",
+        "style": "outward",
+        "highlight": "personBBox"
+      },
+      "confidence": {
+        "minConfidence": 0.55,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/outdoor/OUT_14_OUTDOOR_COMPOSE_MORE_LANDMARK_before.jpg",
+        "afterImage": "QA/outdoor/OUT_14_OUTDOOR_COMPOSE_MORE_LANDMARK_after.jpg",
+        "beforeExpected": "Must trigger (hard): bboxHeight >= 0.80 and selectedCueId=OUT_14_OUTDOOR_COMPOSE_MORE_LANDMARK for >=persistFrames.",
+        "afterExpected": "Must clear: bboxHeight <= 0.62 and cue not selected for >=persistFrames."
+      }
+    },
+    {
+      "id": "OUT_15_HAIR_COVERS_FACE",
+      "scene": "outdoor",
+      "priority": 3,
+      "mutexGroup": "WIND",
+      "metric": {
+        "landmarks": [
+          "face.landmarks"
+        ],
+        "formula": "avgConf = avgConfidence(faceLandmarks); error = 0.55 - avgConf",
+        "unit": "confidence",
+        "meaning": "Outdoor wind: hair covers face; face landmarks unstable",
+        "notes": "",
+        "requires": [
+          "face"
+        ],
+        "computeTier": "T0",
+        "updateHz": 15
+      },
+      "trigger": {
+        "withRef": null,
+        "noRef": {
+          "warn": {
+            ">": 0.0
+          },
+          "hard": {
+            ">": 0.1
+          },
+          "exit": {
+            "<=": 0.0
+          }
+        }
+      },
+      "direction": {
+        "type": "signed",
+        "whenPositive": {
+          "action": "move_hair_off_face"
+        }
+      },
+      "script": {
+        "zh": [
+          "头发挡脸，拨一下",
+          "把头发别到耳后",
+          "脸露出来一点"
+        ],
+        "en": [
+          "Hair off your face",
+          "Tuck hair behind ear",
+          "Show your face a bit"
+        ],
+        "rule": "3-second actionable, photographer tone, one thing only; provide 2–3 variants"
+      },
+      "overlay": {
+        "type": "highlight",
+        "highlight": "faceBBox",
+        "hint": "hair_blocking"
+      },
+      "confidence": {
+        "minConfidence": 0.45,
+        "fallbackCueId": "FRAME_GENERAL"
+      },
+      "antiJitter": {
+        "persistFrames": 6,
+        "minHoldMs": 3000,
+        "cooldownMs": 800
+      },
+      "qa": {
+        "beforeImage": "QA/outdoor/OUT_15_HAIR_COVERS_FACE_before.jpg",
+        "afterImage": "QA/outdoor/OUT_15_HAIR_COVERS_FACE_after.jpg",
+        "beforeExpected": "Must trigger (hard): avgConf(faceLandmarks) <= 0.45 and selectedCueId=OUT_15_HAIR_COVERS_FACE for >=persistFrames.",
+        "afterExpected": "Must clear: avgConf(faceLandmarks) >= 0.55 and cue not selected for >=persistFrames."
+      }
+    }
+  ],
+  "prdVersion": "v1.1.4",
+  "sceneCatalog": {
+    "uiScenes": [
+      "cafe",
+      "outdoor"
+    ],
+    "internalSharedScene": "base",
+    "evaluationRule": "Evaluate cues in internalSharedScene plus cues in the current uiScene. Do NOT expose internalSharedScene to UI or analytics.scene.",
+    "analyticsSceneParam": "cafe|outdoor only"
+  },
+  "directorScriptCard": {
+    "minDisplayMs": 3000,
+    "singleCardOnly": true,
+    "queueOrderDefault": [
+      "light",
+      "compose",
+      "pose",
+      "expression"
+    ],
+    "severeCanJumpQueue": true,
+    "note": "Implements PRD 4.2–4.3: show one card, keep each card >=3s, follow queue order unless severity is high."
+  },
+  "praisePolicy": {
+    "enabled": true,
+    "trigger": "exit_crossed",
+    "dimensionKey": "mutexGroup",
+    "cooldownMs": 10000,
+    "freezeAfterExit": {
+      "script": {
+        "zh": [
+          "就现在！按快门"
+        ],
+        "en": [
+          "Now—hit the shutter"
+        ]
+      },
+      "timeoutMs": 5000,
+      "unfreezeOn": [
+        "shutter_tap",
+        "timeout"
+      ]
+    }
+  },
+  "changeLog": [
+    {
+      "version": "v1.1.4",
+      "date": "2026-01-29",
+      "notes": [
+        "Bump prdVersion to match PRD v1.1.4 (contract: mismatch is build error).",
+        "Fix withRef Match deadband for bboxHeight by aligning DIST_STEP_CLOSER/BACK exit with warn thresholds (prevents 'no cue but not match')."
+      ]
+    },
+    {
+      "date": "2026-01-29",
+      "changes": [
+        "Added binding contract (aliases + bodyPoints set rule) to prevent variable name ambiguity across implementations.",
+        "Added ROI dictionary (faceROI/eyeROI/bgROI) and fixed definitions for frame-level metrics reproducibility.",
+        "Added withRefPolicy including mirrorEvaluation and explicit fallback rule when cue.trigger.withRef is null.",
+        "Added V1 proxy definitions for head pose and gaze (non-vector proxies).",
+        "Added defaults.confidence.minLandmarkConfidence."
+      ],
+      "referenceCases": [
+        "Spec-driven rule engines require deterministic variable binding and ROI definitions to ensure QA regression is meaningful.",
+        "Mirrored composition matching is implemented by evaluating both original and horizontally mirrored errors and taking the minimum."
+      ]
+    },
+    {
+      "date": "2026-01-29",
+      "changes": [
+        "Aligned script stability to PRD: global minHoldMs=3000ms (antiJitter) to ensure a single script card stays visible >=3s.",
+        "Added praisePolicy (cooldown 10s, freeze '就现在！按快门' for 5s or until shutter) as a single source of truth.",
+        "Clarified sceneCatalog: UI/analytics scenes are cafe|outdoor; base is internal shared-scene evaluated in parallel.",
+        "Normalized naming: defaults.confidence.fallbackCueId (removed lowConfidenceFallbackCueId); fixed FRAME_GENERAL.metric.requires=[] and updateHz=15; computeTier='fallback'.",
+        "Re-mapped priorities to follow queue light→compose→pose→expression, with severityBoost allowing severe issues to jump the queue."
+      ],
+      "referenceCases": [
+        "Real-time hint systems commonly use hysteresis/debounce (threshold + consecutive frames + minimum hold time) to prevent rapid oscillation/flicker."
+      ]
+    },
+    {
+      "date": "2026-01-29",
+      "scope": "destructive_test_patch",
+      "items": [
+        "FRAME_GENERAL priority -> 1 to avoid overriding actionable cues under priority_desc selection",
+        "antiJitter.cooldownMs -> 800ms to reduce flicker/re-trigger after exit"
+      ]
+    }
+  ],
+  "binding": {
+    "aliases": {
+      "lShoulder": "body.leftShoulder",
+      "rShoulder": "body.rightShoulder",
+      "lHip": "body.leftHip",
+      "rHip": "body.rightHip",
+      "lAnkle": "body.leftAnkle",
+      "rAnkle": "body.rightAnkle",
+      "faceBBox": "face.faceBBox",
+      "noseTip": "face.noseTip",
+      "chinCenter": "face.chinCenter",
+      "lEye": "face.leftEyeCenter",
+      "rEye": "face.rightEyeCenter",
+      "eyeMid": "mid(lEye,rEye)",
+      "hipMid": "mid(lHip,rHip)",
+      "ankleMid": "mid(lAnkle,rAnkle)"
+    },
+    "sets": {
+      "bodyPoints": {
+        "from": "metric.landmarks",
+        "include": "body.*",
+        "rule": "Include visible points where point.confidence >= defaults.confidence.minLandmarkConfidence; ignore missing."
+      }
+    },
+    "notes": [
+      "This section is a contract: formula variables MUST resolve deterministically across implementations.",
+      "If a formula uses an alias not present in binding.aliases, the PoseSpec version MUST be treated as invalid."
+    ]
+  },
+  "rois": {
+    "faceROI": {
+      "from": "face.faceBBox",
+      "paddingPctOfBBox": {
+        "x": 0.15,
+        "y": 0.15
+      },
+      "clampToFrame": true,
+      "notes": "Padding is applied on each side; clamp to [0,1]."
+    },
+    "eyeROI": {
+      "from": [
+        "face.leftEyeCenter",
+        "face.rightEyeCenter"
+      ],
+      "shape": "rect",
+      "center": "mid(face.leftEyeCenter, face.rightEyeCenter)",
+      "sizeRule": {
+        "w": "2.2 * interOcularDistance",
+        "h": "1.2 * interOcularDistance"
+      },
+      "clampToFrame": true,
+      "requiresConfidence": "defaults.confidence.minLandmarkConfidence",
+      "notes": "If either eye confidence below threshold, eyeROI is unavailable."
+    },
+    "bgROI": {
+      "type": "frame_minus_roi",
+      "minus": "faceROI",
+      "implementation": "4-rect ring approximation (top/bottom/left/right), area-weighted",
+      "notes": "Do NOT include faceROI pixels in bgROI."
+    }
+  },
+  "withRefPolicy": {
+    "targetExtraction": "Compute the same PoseSpec metrics on the selected reference image to produce target.* outputs (store outputs only; do not store pixels).",
+    "mirrorEvaluation": {
+      "enabled": true,
+      "axis": "x=0.5",
+      "rule": "Evaluate non-mirrored error and mirrored error (x' = 1-x for all x coordinates of involved points). Choose the smaller error as final; expose mirrorApplied in internal logs."
+    },
+    "fallbackRule": "If cue.trigger.withRef is null, withRef mode MUST evaluate the cue using noRef rules."
+  },
+  "v1Proxies": {
+    "headPose": {
+      "rollProxy": "eyeLineAngleDeg",
+      "pitchProxy": "noseToChinRatio"
+    },
+    "gaze": {
+      "eyesVisibleRule": "leftEyeCenter.confidence and rightEyeCenter.confidence >= defaults.confidence.minLandmarkConfidence",
+      "catchlightProxy": "meanLuma(eyeROI) - meanLuma(faceROI)"
+    },
+    "notes": [
+      "V1 does not model true gaze vector; proxies are used for computability and regression."
+    ]
+  }
+}
