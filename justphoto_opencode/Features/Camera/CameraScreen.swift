@@ -9,6 +9,9 @@ struct CameraScreen: View {
 
     @StateObject private var warmup = WarmupTracker()
 
+    @StateObject private var cameraFrames = CameraFrameSource()
+    @StateObject private var vision = VisionPipelineController()
+
     @State private var showingSettings = false
     @State private var showingPaywall = false
     @State private var showingInspiration = false
@@ -41,13 +44,19 @@ struct CameraScreen: View {
     @State private var selectedFilmstripItemId: String? = nil
     @State private var lastFilmstripCount: Int = 0
 
+#if DEBUG
+    private var visionDebugLine: String {
+        "poseDetected=\(vision.poseDetected)  faceDetected=\(vision.faceDetected)"
+    }
+#endif
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 16) {
                 Text("Camera")
                     .font(.title.bold())
 
-                Text("MVP shell (no camera yet)")
+                Text("MVP shell")
                     .foregroundStyle(.secondary)
 
                 previewArea
@@ -165,8 +174,10 @@ struct CameraScreen: View {
         }
         .task {
             checkPoseSpecOrBlock()
+            configureCameraFrameHookIfNeeded()
             refreshCameraAuth()
             refreshWarmupState()
+            updateCameraFrameSourceRunning()
             refreshSessionCounts()
             refreshFilmstrip()
             maybeShowCameraPermissionPreprompt()
@@ -183,6 +194,10 @@ struct CameraScreen: View {
         .onChange(of: cameraAuth) { _, _ in
             refreshWarmupState()
             maybeShowPermissionBanner()
+            updateCameraFrameSourceRunning()
+        }
+        .onChange(of: poseSpecValid) { _, _ in
+            updateCameraFrameSourceRunning()
         }
         .onChange(of: warmup.phase) { _, _ in
             refreshSessionCounts()
@@ -502,6 +517,21 @@ struct CameraScreen: View {
                 return
             }
             promptCenter.show(makePoseSpecInvalidPrompt(error: error, expectedPrdVersion: expectedPrdVersion))
+        }
+    }
+
+    private func configureCameraFrameHookIfNeeded() {
+        if cameraFrames.onFrame != nil { return }
+        cameraFrames.onFrame = { pixelBuffer, orientation in
+            vision.offer(pixelBuffer: pixelBuffer, orientation: orientation)
+        }
+    }
+
+    private func updateCameraFrameSourceRunning() {
+        if cameraAuth == .authorized, poseSpecValid {
+            cameraFrames.start()
+        } else {
+            cameraFrames.stop()
         }
     }
 
@@ -833,14 +863,29 @@ struct CameraScreen: View {
                         .strokeBorder(.black.opacity(0.06), lineWidth: 1)
                 )
 
+            if cameraAuth == .authorized, cameraFrames.state != .failed {
+                CameraPreviewView(session: cameraFrames.session)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
+
             VStack(spacing: 8) {
                 switch cameraAuth {
                 case .authorized:
-                    Text("Camera preview")
-                        .font(.headline)
-                    Text("(not wired yet)")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    if cameraFrames.state == .failed {
+                        Text("No camera preview")
+                            .font(.headline)
+                        Text("Camera init failed")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("Camera preview")
+                            .font(.headline)
+                        #if DEBUG
+                        Text(visionDebugLine)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        #endif
+                    }
                 case .denied:
                     Text("No camera preview")
                         .font(.headline)

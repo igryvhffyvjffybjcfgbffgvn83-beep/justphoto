@@ -120,6 +120,11 @@ M4.4 (Workset full flow):
   - Binding gate: `PoseSpecValidator.validateBindingAliasesMinimalSet` blocks Camera when required binding aliases/sets are missing (M6.5).
   - ROI gate: `PoseSpecValidator.validateRoisDictionary` blocks Camera when faceROI/eyeROI/bgROI are missing or not parseable (M6.6).
   - Coordinate system: `PoseSpecCoordinateNormalizer` normalizes points into portrait imageNormalized space before evaluation (M6.7).
+  - Vision pipeline (M6.8):
+    - `justphoto_opencode/Infrastructure/PoseSpec/VisionPipeline.swift` runs `VNDetectHumanBodyPoseRequest` + `VNDetectFaceLandmarksRequest` on preview frames and exposes `poseDetected/faceDetected` for debug verification.
+    - `justphoto_opencode/Infrastructure/Camera/CameraFrameSource.swift` provides preview frames via `AVCaptureVideoDataOutput`.
+    - `justphoto_opencode/Infrastructure/Camera/CameraPreviewView.swift` renders a real `AVCaptureVideoPreviewLayer`.
+    - `justphoto_opencode/Features/Camera/CameraScreen.swift` wires preview + Vision processing and only runs it when `cameraAuth == .authorized` and `poseSpecValid == true`.
 
 6) Prompt System (L1/L2/L3)
 - Centralized, contract-driven prompt presenter (Toast/Banner/Modal) with mutual exclusion and throttling.
