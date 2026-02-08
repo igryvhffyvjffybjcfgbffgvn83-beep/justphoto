@@ -997,6 +997,27 @@ struct DebugToolsScreen: View {
                     }
                 }
 
+                Button("PrintPoseSpecPrdVersion") {
+                    do {
+                        let header = try PoseSpecLoader.shared.loadHeader()
+                        print("PoseSpecPrdVersion:\(header.prdVersion)")
+
+                        statusText = "PoseSpec\n\nprdVersion=\(header.prdVersion)"
+                        statusIsError = false
+                        alertTitle = "PoseSpec"
+                        alertMessage = "prdVersion=\(header.prdVersion)"
+                        showAlert = true
+                    } catch {
+                        print("PoseSpecPrdVersionFAILED: \(error)")
+
+                        statusText = "PoseSpec: FAILED\n\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "PoseSpec failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
                 Button("CreateWriteFailedItem") {
                     do {
                         let itemId = try SessionRepository.shared.insertWriteFailedItemAndFlush()

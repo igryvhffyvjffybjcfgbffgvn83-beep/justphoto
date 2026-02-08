@@ -136,7 +136,7 @@ Notes / Known limitations (track for later milestones):
 ## Milestone 6 — PoseSpec Engine (Bundle-only, Deterministic, A.13 Diagnostics)
 
 - [x] M6.1 Add PoseSpec.json to app bundle resources
-- [ ] M6.2 Create PoseSpecLoader file
+- [x] M6.2 Create PoseSpecLoader file
 - [ ] M6.3 Create PoseSpecValidator file (required fields)
 - [ ] M6.4 Enforce prdVersion match (PRD 4.4.1)
 - [ ] M6.5 Validate binding.aliases minimal set (PRD 4.4.2)

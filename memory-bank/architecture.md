@@ -114,6 +114,7 @@ M4.4 (Workset full flow):
 - Provides: single cue selection, anti-jitter, praise policy, withRef matching (including mirror evaluation).
 - Emits A.13 diagnostics events for match state, fallbacks, and related invariants.
   - Bundle resource: `PoseSpec.json` is shipped inside the app bundle (M6.1).
+  - Loader: `PoseSpecLoader` loads and decodes PoseSpec from the bundle (M6.2).
 
 6) Prompt System (L1/L2/L3)
 - Centralized, contract-driven prompt presenter (Toast/Banner/Modal) with mutual exclusion and throttling.
