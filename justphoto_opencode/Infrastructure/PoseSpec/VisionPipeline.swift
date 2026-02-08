@@ -113,23 +113,53 @@ actor VisionPipeline {
             return nil
         }
 
-        let bboxPortrait = Self.normalizeRectToPortrait(face.boundingBox, sourceOrientation: orientation)
+        let bboxImage = face.boundingBox
+        let bboxPortrait = Self.normalizeRectToPortrait(bboxImage, sourceOrientation: orientation)
 
-        let leftEye = Self.center(of: landmarks.leftEye)
-        let rightEye = Self.center(of: landmarks.rightEye)
-        let nose = Self.center(of: landmarks.nose)
+        let c = face.confidence
 
-        func mk(_ p: CGPoint?, confidence: Float) -> VisionLandmark? {
-            guard let p else { return nil }
-            let pp = Self.toPortraitNormalized(p, sourceOrientation: orientation)
+        // VNFaceLandmarks2D points are normalized in the face bounding box coordinate space.
+        // Convert them to image-normalized coordinates before applying portrait normalization.
+        let lEyeLocal = Self.centerAndOpenness(of: landmarks.leftEye)
+        let rEyeLocal = Self.centerAndOpenness(of: landmarks.rightEye)
+        let noseLocal = Self.centerAndOpenness(of: landmarks.nose)
+
+        func toImageNormalized(_ local: CGPoint) -> CGPoint {
+            CGPoint(
+                x: bboxImage.origin.x + local.x * bboxImage.width,
+                y: bboxImage.origin.y + local.y * bboxImage.height
+            )
+        }
+
+        func mkImagePoint(_ pImage: CGPoint?, confidence: Float) -> VisionLandmark? {
+            guard let pImage else { return nil }
+            let pp = Self.toPortraitNormalized(pImage, sourceOrientation: orientation)
             return VisionLandmark(pPortrait: pp, confidence: confidence)
         }
 
-        // VNFaceLandmarks2D has no per-point confidence; use face confidence.
-        let c = face.confidence
-        let lEye = mk(leftEye, confidence: c)
-        let rEye = mk(rightEye, confidence: c)
-        let n = mk(nose, confidence: c)
+        // Eye-closed heuristic: if eye landmark is present but vertically collapsed, treat as unavailable.
+        let eyeOpenThreshold: CGFloat = 0.12
+
+        let lEye: VisionLandmark?
+        if let lp = lEyeLocal.center, let openness = lEyeLocal.openness, openness >= eyeOpenThreshold {
+            lEye = mkImagePoint(toImageNormalized(lp), confidence: c)
+        } else {
+            lEye = nil
+        }
+
+        let rEye: VisionLandmark?
+        if let rp = rEyeLocal.center, let openness = rEyeLocal.openness, openness >= eyeOpenThreshold {
+            rEye = mkImagePoint(toImageNormalized(rp), confidence: c)
+        } else {
+            rEye = nil
+        }
+
+        let n: VisionLandmark? = {
+            if let np = noseLocal.center {
+                return mkImagePoint(toImageNormalized(np), confidence: c)
+            }
+            return nil
+        }()
 
         // Require at least one stable feature so "cover face" can turn this false.
         if lEye == nil && rEye == nil && n == nil {
@@ -145,17 +175,46 @@ actor VisionPipeline {
         )
     }
 
-    private static func center(of region: VNFaceLandmarkRegion2D?) -> CGPoint? {
-        guard let region else { return nil }
+    private struct RegionSummary {
+        let center: CGPoint?
+        // Vertical span / horizontal span; smaller => more closed.
+        let openness: CGFloat?
+    }
+
+    private static func centerAndOpenness(of region: VNFaceLandmarkRegion2D?) -> RegionSummary {
+        guard let region else { return RegionSummary(center: nil, openness: nil) }
         let pts = region.normalizedPoints
-        guard !pts.isEmpty else { return nil }
+        guard !pts.isEmpty else { return RegionSummary(center: nil, openness: nil) }
+
         var sx: CGFloat = 0
         var sy: CGFloat = 0
+        var minX: CGFloat = .greatestFiniteMagnitude
+        var maxX: CGFloat = -.greatestFiniteMagnitude
+        var minY: CGFloat = .greatestFiniteMagnitude
+        var maxY: CGFloat = -.greatestFiniteMagnitude
+
         for p in pts {
             sx += p.x
             sy += p.y
+            minX = min(minX, p.x)
+            maxX = max(maxX, p.x)
+            minY = min(minY, p.y)
+            maxY = max(maxY, p.y)
         }
-        return CGPoint(x: sx / CGFloat(pts.count), y: sy / CGFloat(pts.count))
+
+        let cx = sx / CGFloat(pts.count)
+        let cy = sy / CGFloat(pts.count)
+
+        let w = max(0, maxX - minX)
+        let h = max(0, maxY - minY)
+        let openness: CGFloat?
+        if w <= 0.0001 {
+            openness = nil
+        } else {
+            openness = h / w
+        }
+
+        return RegionSummary(center: CGPoint(x: cx, y: cy), openness: openness)
     }
 
     private static func normalizeRectToPortrait(_ r: CGRect, sourceOrientation: CGImagePropertyOrientation) -> CGRect {
@@ -219,6 +278,9 @@ final class VisionPipelineController: ObservableObject {
     @Published private(set) var lastPosePointCount: Int = 0
     @Published private(set) var lastFaceConfidence: Float = 0
 
+    @Published private(set) var lastPose: VisionPoseResult? = nil
+    @Published private(set) var lastFace: VisionFaceResult? = nil
+
     private var lastConsolePrintTsMs: Int = 0
 
     func offer(pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation) {
@@ -235,6 +297,9 @@ final class VisionPipelineController: ObservableObject {
                 self.lastUpdateTsMs = tsMs
                 self.lastPosePointCount = r.pose?.points.count ?? 0
                 self.lastFaceConfidence = r.face?.faceConfidence ?? 0
+
+                self.lastPose = r.pose
+                self.lastFace = r.face
 
                 #if DEBUG
                 if tsMs - self.lastConsolePrintTsMs >= 1000 {

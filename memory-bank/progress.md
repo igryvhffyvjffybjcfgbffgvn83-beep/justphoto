@@ -143,7 +143,7 @@ Notes / Known limitations (track for later milestones):
 - [x] M6.6 Validate rois dictionary (PRD 4.4.3)
 - [x] M6.7 Implement “portrait normalized” coordinate normalization (PoseSpec.coordinateSystem)
 - [x] M6.8 Create VisionPipeline files (pose + face)
-- [ ] M6.9 Create ROIComputer file (faceROI/eyeROI/bgROI)
+- [x] M6.9 Create ROIComputer file (faceROI/eyeROI/bgROI)
 - [ ] M6.10 Create MetricComputer file (only metrics needed by PoseSpec v1.1.4)
 - [ ] M6.11 Create TierScheduler file (T0 15Hz / T1 2Hz)
 - [ ] M6.12 Create CueEvaluator file (enter/warn/hard/exit)

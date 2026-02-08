@@ -3,6 +3,10 @@ import Combine
 import Foundation
 import ImageIO
 
+#if canImport(UIKit)
+import UIKit
+#endif
+
 final class CameraFrameSource: NSObject, ObservableObject {
     enum State: String {
         case idle
@@ -15,7 +19,8 @@ final class CameraFrameSource: NSObject, ObservableObject {
 
     let session = AVCaptureSession()
 
-    var isFrontCamera: Bool { false }
+    // Updated during configureIfNeeded.
+    nonisolated(unsafe) private var isFrontCamera: Bool = false
 
     // Deliver frames at most once per interval.
     nonisolated(unsafe) var minFrameIntervalMs: Int = 100
@@ -27,11 +32,31 @@ final class CameraFrameSource: NSObject, ObservableObject {
 
     nonisolated(unsafe) private var lastDeliveredTsMs: Int = 0
 
+#if canImport(UIKit)
+    private var orientationObserver: NSObjectProtocol? = nil
+    nonisolated(unsafe) private var cachedInterfaceOrientation: UIInterfaceOrientation? = nil
+#endif
+
     func start() {
         if state == .running { return }
 
         do {
             try configureIfNeeded()
+
+#if canImport(UIKit)
+            cachedInterfaceOrientation = currentInterfaceOrientation()
+            if orientationObserver == nil {
+                orientationObserver = NotificationCenter.default.addObserver(
+                    forName: UIDevice.orientationDidChangeNotification,
+                    object: nil,
+                    queue: .main
+                ) { [weak self] _ in
+                    guard let self else { return }
+                    self.cachedInterfaceOrientation = self.currentInterfaceOrientation()
+                }
+            }
+#endif
+
             session.startRunning()
             DispatchQueue.main.async {
                 self.state = .running
@@ -58,6 +83,13 @@ final class CameraFrameSource: NSObject, ObservableObject {
         }
         session.stopRunning()
         DispatchQueue.main.async { self.state = .idle }
+
+#if canImport(UIKit)
+        if let obs = orientationObserver {
+            NotificationCenter.default.removeObserver(obs)
+            orientationObserver = nil
+        }
+#endif
         #if DEBUG
         print("CameraFrameSourceStopped")
         #endif
@@ -76,6 +108,9 @@ final class CameraFrameSource: NSObject, ObservableObject {
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
             throw NSError(domain: "CameraFrameSource", code: 1, userInfo: [NSLocalizedDescriptionKey: "No camera device"])
         }
+
+        isFrontCamera = (device.position == .front)
+
         let input = try AVCaptureDeviceInput(device: device)
         guard session.canAddInput(input) else {
             throw NSError(domain: "CameraFrameSource", code: 2, userInfo: [NSLocalizedDescriptionKey: "Cannot add camera input"])
@@ -112,8 +147,35 @@ extension CameraFrameSource: AVCaptureVideoDataOutputSampleBufferDelegate {
         }
         lastDeliveredTsMs = tsMs
 
-        // M6.8 uses this for portrait-normalized evaluation (M6.7).
-        // For MVP wiring, assume portrait `.up` until we plumb authoritative orientation.
-        onFrame?(pixelBuffer, .up)
+        #if canImport(UIKit)
+        let cgOrientation: CGImagePropertyOrientation
+        switch cachedInterfaceOrientation {
+        case .portrait:
+            cgOrientation = isFrontCamera ? .upMirrored : .up
+        case .portraitUpsideDown:
+            cgOrientation = isFrontCamera ? .downMirrored : .down
+        case .landscapeLeft:
+            cgOrientation = isFrontCamera ? .rightMirrored : .right
+        case .landscapeRight:
+            cgOrientation = isFrontCamera ? .leftMirrored : .left
+        default:
+            cgOrientation = isFrontCamera ? .upMirrored : .up
+        }
+        #else
+        let cgOrientation: CGImagePropertyOrientation = isFrontCamera ? .upMirrored : .up
+        #endif
+
+        onFrame?(pixelBuffer, cgOrientation)
     }
 }
+
+#if canImport(UIKit)
+extension CameraFrameSource {
+    private func currentInterfaceOrientation() -> UIInterfaceOrientation? {
+        let scenes = UIApplication.shared.connectedScenes
+        let ws = scenes.compactMap { $0 as? UIWindowScene }
+        return ws.first?.interfaceOrientation
+    }
+
+}
+#endif

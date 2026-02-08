@@ -125,6 +125,9 @@ M4.4 (Workset full flow):
     - `justphoto_opencode/Infrastructure/Camera/CameraFrameSource.swift` provides preview frames via `AVCaptureVideoDataOutput`.
     - `justphoto_opencode/Infrastructure/Camera/CameraPreviewView.swift` renders a real `AVCaptureVideoPreviewLayer`.
     - `justphoto_opencode/Features/Camera/CameraScreen.swift` wires preview + Vision processing and only runs it when `cameraAuth == .authorized` and `poseSpecValid == true`.
+  - ROI computer (M6.9):
+    - `justphoto_opencode/Infrastructure/PoseSpec/ROIComputer.swift` computes `faceROI` (padded bbox), `eyeROI` (from eye centers + inter-ocular distance; requires eyes), and `bgROI` as a 4-rect ring (`frame - faceROI`).
+    - `justphoto_opencode/Infrastructure/Camera/CameraPreviewView.swift` overlays ROI rectangles (debug visualization) aligned to the preview layer.
 
 6) Prompt System (L1/L2/L3)
 - Centralized, contract-driven prompt presenter (Toast/Banner/Modal) with mutual exclusion and throttling.
