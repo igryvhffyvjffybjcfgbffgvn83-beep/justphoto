@@ -42,6 +42,16 @@ final class PoseSpecLoader {
         let raw = try Data(contentsOf: url)
 
 #if DEBUG
+        if PoseSpecDebugSettings.consumeUseWrongPrdVersionOnce() {
+            if var obj = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any] {
+                obj["prdVersion"] = "v0.0.0"
+                if let broken = try? JSONSerialization.data(withJSONObject: obj) {
+                    print("PoseSpecDebug: using wrong prdVersion once")
+                    return broken
+                }
+            }
+        }
+
         if PoseSpecDebugSettings.consumeUseBrokenPoseSpecOnce() {
             // Deliberately break required fields for M6.3 validation verify.
             if var obj = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any] {

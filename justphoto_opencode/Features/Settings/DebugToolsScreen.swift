@@ -1028,6 +1028,16 @@ struct DebugToolsScreen: View {
                     showAlert = true
                 }
 
+                Button("M6.4 ArmWrongPrdVersionOnce") {
+                    PoseSpecDebugSettings.armUseWrongPrdVersionOnce()
+                    print("PoseSpecDebug: armed wrong prdVersion once")
+                    statusText = "M6.4 ArmWrongPrdVersionOnce: armed\n\nRelaunch app to trigger validation"
+                    statusIsError = false
+                    alertTitle = "PoseSpec debug"
+                    alertMessage = "armed (wrong prdVersion once)"
+                    showAlert = true
+                }
+
                 Button("CreateWriteFailedItem") {
                     do {
                         let itemId = try SessionRepository.shared.insertWriteFailedItemAndFlush()

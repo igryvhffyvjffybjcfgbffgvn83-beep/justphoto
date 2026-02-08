@@ -383,6 +383,9 @@ struct CameraScreen: View {
             case "posespec_invalid_modal":
                 guard e.actionId == "retry" else { break }
                 checkPoseSpecOrBlock()
+            case "posespec_version_mismatch_modal":
+                guard e.actionId == "retry" else { break }
+                checkPoseSpecOrBlock()
             default:
                 break
             }
@@ -467,22 +470,56 @@ struct CameraScreen: View {
     }
 
     private func checkPoseSpecOrBlock() {
+        let expectedPrdVersion = "v1.1.4"
         do {
             let data = try PoseSpecLoader.shared.loadData()
             try PoseSpecValidator.validateRequiredFields(data: data)
+            try PoseSpecValidator.validatePrdVersion(data: data, expected: expectedPrdVersion)
             poseSpecValid = true
         } catch {
             poseSpecValid = false
             if promptCenter.modal?.key != "posespec_invalid_modal" {
-                promptCenter.show(makePoseSpecInvalidPrompt(error: error))
+                promptCenter.show(makePoseSpecInvalidPrompt(error: error, expectedPrdVersion: expectedPrdVersion))
             }
         }
     }
 
-    private func makePoseSpecInvalidPrompt(error: Error) -> Prompt {
+    private func makePoseSpecInvalidPrompt(error: Error, expectedPrdVersion: String) -> Prompt {
         #if DEBUG
         print("PoseSpecInvalid: \(error)")
         #endif
+
+        if case PoseSpecValidationError.prdVersionMismatch(let expected, let actual) = error {
+            return Prompt(
+                key: "posespec_version_mismatch_modal",
+                level: .L3,
+                surface: .cameraModalCenter,
+                priority: 99,
+                blocksShutter: true,
+                isClosable: false,
+                autoDismissSeconds: nil,
+                gate: .stateOnly,
+                title: "版本不一致",
+                message: "PoseSpec 版本与 PRD 不一致，无法继续。\n\nexpected=\(expected)\nactual=\(actual)",
+                primaryActionId: "retry",
+                primaryTitle: "重试",
+                secondaryActionId: nil,
+                secondaryTitle: nil,
+                tertiaryActionId: nil,
+                tertiaryTitle: nil,
+                throttle: .init(
+                    perKeyMinIntervalSec: 0,
+                    globalWindowSec: 0,
+                    globalMaxCountInWindow: 0,
+                    suppressAfterDismissSec: 0
+                ),
+                payload: [
+                    "expected": .string(expected),
+                    "actual": .string(actual),
+                ],
+                emittedAt: Date()
+            )
+        }
 
         return Prompt(
             key: "posespec_invalid_modal",
@@ -494,7 +531,7 @@ struct CameraScreen: View {
             autoDismissSeconds: nil,
             gate: .stateOnly,
             title: "PoseSpec 不完整",
-            message: "PoseSpec 不完整，无法继续。\n\n\(error.localizedDescription)",
+            message: "PoseSpec 不完整，无法继续。\n\n\(error.localizedDescription)\n\nexpected_prdVersion=\(expectedPrdVersion)",
             primaryActionId: "retry",
             primaryTitle: "重试",
             secondaryActionId: nil,

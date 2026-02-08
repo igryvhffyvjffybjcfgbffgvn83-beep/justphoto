@@ -138,7 +138,7 @@ Notes / Known limitations (track for later milestones):
 - [x] M6.1 Add PoseSpec.json to app bundle resources
 - [x] M6.2 Create PoseSpecLoader file
 - [x] M6.3 Create PoseSpecValidator file (required fields)
-- [ ] M6.4 Enforce prdVersion match (PRD 4.4.1)
+- [x] M6.4 Enforce prdVersion match (PRD 4.4.1)
 - [ ] M6.5 Validate binding.aliases minimal set (PRD 4.4.2)
 - [ ] M6.6 Validate rois dictionary (PRD 4.4.3)
 - [ ] M6.7 Implement “portrait normalized” coordinate normalization (PoseSpec.coordinateSystem)

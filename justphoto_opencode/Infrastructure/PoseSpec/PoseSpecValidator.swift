@@ -4,6 +4,7 @@ enum PoseSpecValidationError: Error, LocalizedError {
     case notJSONObject
     case missingRequiredKeys([String])
     case wrongType(key: String, expected: String)
+    case prdVersionMismatch(expected: String, actual: String)
 
     var errorDescription: String? {
         switch self {
@@ -13,6 +14,8 @@ enum PoseSpecValidationError: Error, LocalizedError {
             return "PoseSpec missing required keys: \(keys.joined(separator: ", "))"
         case .wrongType(let key, let expected):
             return "PoseSpec key has wrong type: \(key) (expected \(expected))"
+        case .prdVersionMismatch(let expected, let actual):
+            return "PoseSpec prdVersion mismatch: expected=\(expected) actual=\(actual)"
         }
     }
 }
@@ -70,6 +73,23 @@ enum PoseSpecValidator {
 
         if !missing.isEmpty {
             throw PoseSpecValidationError.missingRequiredKeys(missing)
+        }
+    }
+
+    static func validatePrdVersion(data: Data, expected: String) throws {
+        let json = try JSONSerialization.jsonObject(with: data)
+        guard let obj = json as? [String: Any] else {
+            throw PoseSpecValidationError.notJSONObject
+        }
+
+        guard let v = obj["prdVersion"] else {
+            throw PoseSpecValidationError.missingRequiredKeys(["prdVersion"])
+        }
+        guard let actual = v as? String else {
+            throw PoseSpecValidationError.wrongType(key: "prdVersion", expected: "String")
+        }
+        guard actual == expected else {
+            throw PoseSpecValidationError.prdVersionMismatch(expected: expected, actual: actual)
         }
     }
 }
