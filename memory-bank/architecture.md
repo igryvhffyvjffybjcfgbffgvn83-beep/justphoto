@@ -118,6 +118,7 @@ M4.4 (Workset full flow):
   - Validator: `PoseSpecValidator` enforces required PoseSpec keys; invalid PoseSpec blocks Camera via a L3 modal (M6.3).
   - Version gate: `PoseSpecValidator.validatePrdVersion(expected:)` blocks Camera when prdVersion mismatches (M6.4).
   - Binding gate: `PoseSpecValidator.validateBindingAliasesMinimalSet` blocks Camera when required binding aliases/sets are missing (M6.5).
+  - ROI gate: `PoseSpecValidator.validateRoisDictionary` blocks Camera when faceROI/eyeROI/bgROI are missing or not parseable (M6.6).
 
 6) Prompt System (L1/L2/L3)
 - Centralized, contract-driven prompt presenter (Toast/Banner/Modal) with mutual exclusion and throttling.

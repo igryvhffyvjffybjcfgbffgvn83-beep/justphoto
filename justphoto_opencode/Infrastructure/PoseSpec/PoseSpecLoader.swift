@@ -46,6 +46,19 @@ final class PoseSpecLoader {
             return raw
         }
 
+        if PoseSpecDebugSettings.consumeUseMissingEyeROIOnce() {
+            if var obj = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any],
+               var rois = obj["rois"] as? [String: Any]
+            {
+                rois.removeValue(forKey: "eyeROI")
+                obj["rois"] = rois
+                if let broken = try? JSONSerialization.data(withJSONObject: obj) {
+                    print("PoseSpecDebug: using missing eyeROI once")
+                    return broken
+                }
+            }
+        }
+
         if PoseSpecDebugSettings.consumeUseMissingAliasOnce() {
             if var obj = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any],
                var binding = obj["binding"] as? [String: Any],

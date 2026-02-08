@@ -395,6 +395,9 @@ struct CameraScreen: View {
             case "posespec_binding_missing_modal":
                 guard e.actionId == "retry" else { break }
                 checkPoseSpecOrBlock()
+            case "posespec_rois_missing_modal":
+                guard e.actionId == "retry" else { break }
+                checkPoseSpecOrBlock()
             default:
                 break
             }
@@ -483,7 +486,7 @@ struct CameraScreen: View {
 
 #if DEBUG
         print(
-            "PoseSpecCheckStart: armed_missing_alias=\(PoseSpecDebugSettings.debugIsMissingAliasArmed()) armed_wrong_prd=\(PoseSpecDebugSettings.debugIsWrongPrdArmed()) armed_broken=\(PoseSpecDebugSettings.debugIsBrokenPoseSpecArmed())"
+            "PoseSpecCheckStart: armed_missing_alias=\(PoseSpecDebugSettings.debugIsMissingAliasArmed()) armed_missing_eye_roi=\(PoseSpecDebugSettings.debugIsMissingEyeROIArmed()) armed_wrong_prd=\(PoseSpecDebugSettings.debugIsWrongPrdArmed()) armed_broken=\(PoseSpecDebugSettings.debugIsBrokenPoseSpecArmed())"
         )
 #endif
         do {
@@ -491,6 +494,7 @@ struct CameraScreen: View {
             try PoseSpecValidator.validateRequiredFields(data: data)
             try PoseSpecValidator.validatePrdVersion(data: data, expected: expectedPrdVersion)
             try PoseSpecValidator.validateBindingAliasesMinimalSet(data: data)
+            try PoseSpecValidator.validateRoisDictionary(data: data)
             poseSpecValid = true
         } catch {
             poseSpecValid = false
@@ -621,6 +625,35 @@ struct CameraScreen: View {
                     suppressAfterDismissSec: 0
                 ),
                 payload: [:],
+                emittedAt: Date()
+            )
+        }
+
+        if case PoseSpecValidationError.roisMissing(let missing) = error {
+            return Prompt(
+                key: "posespec_rois_missing_modal",
+                level: .L3,
+                surface: .cameraModalCenter,
+                priority: 99,
+                blocksShutter: true,
+                isClosable: false,
+                autoDismissSeconds: nil,
+                gate: .stateOnly,
+                title: "rois 缺失",
+                message: "PoseSpec 不完整：rois 缺失。\n\nmissing=\(missing.joined(separator: ", "))",
+                primaryActionId: "retry",
+                primaryTitle: "重试",
+                secondaryActionId: nil,
+                secondaryTitle: nil,
+                tertiaryActionId: nil,
+                tertiaryTitle: nil,
+                throttle: .init(
+                    perKeyMinIntervalSec: 0,
+                    globalWindowSec: 0,
+                    globalMaxCountInWindow: 0,
+                    suppressAfterDismissSec: 0
+                ),
+                payload: ["missing": .string(missing.joined(separator: ","))],
                 emittedAt: Date()
             )
         }

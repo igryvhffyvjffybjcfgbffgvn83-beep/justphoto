@@ -1048,6 +1048,16 @@ struct DebugToolsScreen: View {
                     showAlert = true
                 }
 
+                Button("M6.6 ArmMissingEyeROIOnce") {
+                    PoseSpecDebugSettings.armUseMissingEyeROIOnce()
+                    print("PoseSpecDebug: armed missing eyeROI once")
+                    statusText = "M6.6 ArmMissingEyeROIOnce: armed\n\nRelaunch app to trigger validation"
+                    statusIsError = false
+                    alertTitle = "PoseSpec debug"
+                    alertMessage = "armed (missing eyeROI once)"
+                    showAlert = true
+                }
+
                 Button("CreateWriteFailedItem") {
                     do {
                         let itemId = try SessionRepository.shared.insertWriteFailedItemAndFlush()
