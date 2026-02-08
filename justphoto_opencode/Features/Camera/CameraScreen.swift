@@ -63,8 +63,19 @@ struct CameraScreen: View {
                         },
                         onToggleLike: { item in
                             do {
-                                _ = try SessionRepository.shared.setLiked(itemId: item.itemId, liked: !item.liked)
+                                let nextLiked = !item.liked
+                                _ = try SessionRepository.shared.setLiked(itemId: item.itemId, liked: nextLiked)
                                 NotificationCenter.default.post(name: CaptureEvents.sessionItemsChanged, object: nil)
+
+                                Task {
+                                    let r = await FavoriteSyncer.shared.syncFavoriteIfPossible(
+                                        assetLocalIdentifier: item.assetId,
+                                        isFavorite: nextLiked
+                                    )
+                                    if r == .failed {
+                                        await MainActor.run { maybeShowFavoriteSyncFailedBanner() }
+                                    }
+                                }
                             } catch {
                                 print("FilmstripToggleLikeFAILED: item_id=\(item.itemId) error=\(error)")
                             }
@@ -355,6 +366,17 @@ struct CameraScreen: View {
                 default:
                     break
                 }
+            case "favorite_sync_failed_banner":
+                guard e.actionId == "go_settings" else { break }
+#if canImport(UIKit)
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    openURL(url)
+                }
+#else
+                #if DEBUG
+                print("OpenSettingsUnavailable")
+                #endif
+#endif
             default:
                 break
             }
@@ -423,6 +445,10 @@ struct CameraScreen: View {
             ViewerContainer(items: filmstripItems, initialItemId: selectedFilmstripItemId)
                 .environment(\.promptHostInstalled, false)
         }
+    }
+
+    private func maybeShowFavoriteSyncFailedBanner() {
+        promptCenter.show(makeFavoriteSyncFailedBannerPrompt())
     }
 
     private func maybeShowCameraPermissionPreprompt() {
@@ -979,6 +1005,35 @@ struct CameraScreen: View {
                 suppressAfterDismissSec: 60
             ),
             payload: ["album_add_failed_count": .int(count)],
+            emittedAt: Date()
+        )
+    }
+
+    private func makeFavoriteSyncFailedBannerPrompt() -> Prompt {
+        Prompt(
+            key: "favorite_sync_failed_banner",
+            level: .L2,
+            surface: .cameraBannerTop,
+            priority: 58,
+            blocksShutter: false,
+            isClosable: true,
+            autoDismissSeconds: nil,
+            gate: .sessionOnce,
+            title: nil,
+            message: "已在 App 内标记喜欢，但同步到系统收藏失败。你仍可继续拍摄。",
+            primaryActionId: "go_settings",
+            primaryTitle: "去设置",
+            secondaryActionId: nil,
+            secondaryTitle: nil,
+            tertiaryActionId: nil,
+            tertiaryTitle: nil,
+            throttle: .init(
+                perKeyMinIntervalSec: 0,
+                globalWindowSec: 0,
+                globalMaxCountInWindow: 0,
+                suppressAfterDismissSec: 0
+            ),
+            payload: [:],
             emittedAt: Date()
         )
     }

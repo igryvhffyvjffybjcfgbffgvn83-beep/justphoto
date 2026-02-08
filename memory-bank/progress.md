@@ -131,7 +131,7 @@ Notes / Known limitations (track for later milestones):
 - [x] M5.6 Implement scale<=1.01 treated as 1 (PRD)
 - [x] M5.7 Implement “pinch wins over swipe”
 - [x] M5.8 Persist liked in DB (GRDB usage)
-- [ ] M5.9 Attempt sync to system Favorites (Full access only; failure non-blocking)
+- [x] M5.9 Attempt sync to system Favorites (Full access only; failure non-blocking)
 
 ## Milestone 6 — PoseSpec Engine (Bundle-only, Deterministic, A.13 Diagnostics)
 

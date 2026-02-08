@@ -41,6 +41,7 @@ The app is a single-device, offline-first iOS app with these major subsystems:
 - After `finalized`, runs Asset Fetch Verification Retry (immediate fetch, then 500ms retry once).
 - Adds assets to the “Just Photo” album; failures set `album_state=failed` (non-blocking) and support retries.
 - Limited Access support includes phantom asset healing and `phantom_asset_detected` diagnostics.
+- When a user toggles `liked`, the app attempts to sync to system Favorites (`PHAsset.isFavorite`) only when Photos auth is Full; failures are non-blocking and show a sessionOnce L2 banner.
 
 4B) Capture Pipeline Ownership
 - `CaptureCoordinator` is the single owner of the capture/save pipeline state machine (serializes work via an internal actor).

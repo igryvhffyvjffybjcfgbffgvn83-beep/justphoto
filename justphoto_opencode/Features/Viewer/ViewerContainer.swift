@@ -68,6 +68,7 @@ private struct PagingScrollGateView: View {
 
 // M5.4: Viewer shell (index + close + like placeholder).
 struct ViewerContainer: View {
+    @EnvironmentObject private var promptCenter: PromptCenter
     @Environment(\.dismiss) private var dismiss
 
     let items: [SessionRepository.SessionItemSummary]
@@ -119,6 +120,7 @@ struct ViewerContainer: View {
         .onReceive(NotificationCenter.default.publisher(for: CaptureEvents.sessionItemsChanged)) { _ in
             refreshItemsFromDB()
         }
+        .promptHost()
     }
 
     private var topBar: some View {
@@ -193,9 +195,50 @@ struct ViewerContainer: View {
                 return s
             }
             NotificationCenter.default.post(name: CaptureEvents.sessionItemsChanged, object: nil)
+
+            Task {
+                let r = await FavoriteSyncer.shared.syncFavoriteIfPossible(
+                    assetLocalIdentifier: current.assetId,
+                    isFavorite: next
+                )
+                if r == .failed {
+                    await MainActor.run {
+                        promptCenter.show(makeFavoriteSyncFailedBannerPrompt(surface: .viewerBannerTop))
+                    }
+                }
+            }
         } catch {
             print("ViewerToggleLikeFAILED: item_id=\(current.itemId) error=\(error)")
         }
+    }
+
+    private func makeFavoriteSyncFailedBannerPrompt(surface: PromptSurface) -> Prompt {
+        Prompt(
+            key: "favorite_sync_failed_banner",
+            level: .L2,
+            surface: surface,
+            priority: 58,
+            blocksShutter: false,
+            isClosable: true,
+            autoDismissSeconds: nil,
+            gate: .sessionOnce,
+            title: nil,
+            message: "已在 App 内标记喜欢，但同步到系统收藏失败。",
+            primaryActionId: "go_settings",
+            primaryTitle: "去设置",
+            secondaryActionId: nil,
+            secondaryTitle: nil,
+            tertiaryActionId: nil,
+            tertiaryTitle: nil,
+            throttle: .init(
+                perKeyMinIntervalSec: 0,
+                globalWindowSec: 0,
+                globalMaxCountInWindow: 0,
+                suppressAfterDismissSec: 0
+            ),
+            payload: [:],
+            emittedAt: Date()
+        )
     }
 
     private func refreshItemsFromDB() {

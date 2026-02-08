@@ -984,6 +984,19 @@ struct DebugToolsScreen: View {
                     }
                 }
 
+                Button("M5.9 ForceFavoriteSyncFailOnce") {
+                    Task {
+                        await FavoriteSyncer.shared.setDebugForceFailOnce()
+                        await MainActor.run {
+                            statusText = "M5.9 ForceFavoriteSyncFailOnce: armed"
+                            statusIsError = false
+                            alertTitle = "M5.9 favorite sync"
+                            alertMessage = "armed"
+                            showAlert = true
+                        }
+                    }
+                }
+
                 Button("CreateWriteFailedItem") {
                     do {
                         let itemId = try SessionRepository.shared.insertWriteFailedItemAndFlush()
