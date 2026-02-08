@@ -27,7 +27,7 @@ final class PoseSpecLoader {
     private init() {}
 
     func loadHeader(bundle: Bundle = .main) throws -> PoseSpecHeader {
-        let data = try loadData(bundle: bundle)
+        let data = try loadData(bundle: bundle, applyDebugPatch: false)
         do {
             return try JSONDecoder().decode(PoseSpecHeader.self, from: data)
         } catch {
@@ -35,13 +35,32 @@ final class PoseSpecLoader {
         }
     }
 
-    func loadData(bundle: Bundle = .main) throws -> Data {
+    func loadData(bundle: Bundle = .main, applyDebugPatch: Bool = true) throws -> Data {
         guard let url = bundle.url(forResource: "PoseSpec", withExtension: "json") else {
             throw PoseSpecLoaderError.missingResource
         }
         let raw = try Data(contentsOf: url)
 
 #if DEBUG
+        guard applyDebugPatch else {
+            return raw
+        }
+
+        if PoseSpecDebugSettings.consumeUseMissingAliasOnce() {
+            if var obj = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any],
+               var binding = obj["binding"] as? [String: Any],
+               var aliases = binding["aliases"] as? [String: Any]
+            {
+                aliases.removeValue(forKey: "lShoulder")
+                binding["aliases"] = aliases
+                obj["binding"] = binding
+                if let broken = try? JSONSerialization.data(withJSONObject: obj) {
+                    print("PoseSpecDebug: using missing alias once")
+                    return broken
+                }
+            }
+        }
+
         if PoseSpecDebugSettings.consumeUseWrongPrdVersionOnce() {
             if var obj = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any] {
                 obj["prdVersion"] = "v0.0.0"

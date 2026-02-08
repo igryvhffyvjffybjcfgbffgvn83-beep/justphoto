@@ -1038,6 +1038,16 @@ struct DebugToolsScreen: View {
                     showAlert = true
                 }
 
+                Button("M6.5 ArmMissingAliasOnce") {
+                    PoseSpecDebugSettings.armUseMissingAliasOnce()
+                    print("PoseSpecDebug: armed missing alias once")
+                    statusText = "M6.5 ArmMissingAliasOnce: armed\n\nRelaunch app to trigger validation"
+                    statusIsError = false
+                    alertTitle = "PoseSpec debug"
+                    alertMessage = "armed (missing alias once)"
+                    showAlert = true
+                }
+
                 Button("CreateWriteFailedItem") {
                     do {
                         let itemId = try SessionRepository.shared.insertWriteFailedItemAndFlush()

@@ -188,7 +188,13 @@ struct CameraScreen: View {
             refreshSessionCounts()
         }
         .onChange(of: showingSettings) { _, newValue in
-            if !newValue { refreshSessionCounts() }
+            if !newValue {
+                refreshSessionCounts()
+#if DEBUG
+                // Helps validate PoseSpec debug patches without relaunch.
+                checkPoseSpecOrBlock()
+#endif
+            }
         }
         .onChange(of: showingPaywall) { _, newValue in
             if !newValue { refreshSessionCounts() }
@@ -386,6 +392,9 @@ struct CameraScreen: View {
             case "posespec_version_mismatch_modal":
                 guard e.actionId == "retry" else { break }
                 checkPoseSpecOrBlock()
+            case "posespec_binding_missing_modal":
+                guard e.actionId == "retry" else { break }
+                checkPoseSpecOrBlock()
             default:
                 break
             }
@@ -471,16 +480,24 @@ struct CameraScreen: View {
 
     private func checkPoseSpecOrBlock() {
         let expectedPrdVersion = "v1.1.4"
+
+#if DEBUG
+        print(
+            "PoseSpecCheckStart: armed_missing_alias=\(PoseSpecDebugSettings.debugIsMissingAliasArmed()) armed_wrong_prd=\(PoseSpecDebugSettings.debugIsWrongPrdArmed()) armed_broken=\(PoseSpecDebugSettings.debugIsBrokenPoseSpecArmed())"
+        )
+#endif
         do {
             let data = try PoseSpecLoader.shared.loadData()
             try PoseSpecValidator.validateRequiredFields(data: data)
             try PoseSpecValidator.validatePrdVersion(data: data, expected: expectedPrdVersion)
+            try PoseSpecValidator.validateBindingAliasesMinimalSet(data: data)
             poseSpecValid = true
         } catch {
             poseSpecValid = false
-            if promptCenter.modal?.key != "posespec_invalid_modal" {
-                promptCenter.show(makePoseSpecInvalidPrompt(error: error, expectedPrdVersion: expectedPrdVersion))
+            if let k = promptCenter.modal?.key, k.hasPrefix("posespec_") {
+                return
             }
+            promptCenter.show(makePoseSpecInvalidPrompt(error: error, expectedPrdVersion: expectedPrdVersion))
         }
     }
 
@@ -517,6 +534,93 @@ struct CameraScreen: View {
                     "expected": .string(expected),
                     "actual": .string(actual),
                 ],
+                emittedAt: Date()
+            )
+        }
+
+        if case PoseSpecValidationError.bindingMissingAliases(let missing) = error {
+            return Prompt(
+                key: "posespec_binding_missing_modal",
+                level: .L3,
+                surface: .cameraModalCenter,
+                priority: 99,
+                blocksShutter: true,
+                isClosable: false,
+                autoDismissSeconds: nil,
+                gate: .stateOnly,
+                title: "binding 缺失",
+                message: "PoseSpec 不完整：binding 缺失。\n\nmissing=\(missing.joined(separator: ", "))",
+                primaryActionId: "retry",
+                primaryTitle: "重试",
+                secondaryActionId: nil,
+                secondaryTitle: nil,
+                tertiaryActionId: nil,
+                tertiaryTitle: nil,
+                throttle: .init(
+                    perKeyMinIntervalSec: 0,
+                    globalWindowSec: 0,
+                    globalMaxCountInWindow: 0,
+                    suppressAfterDismissSec: 0
+                ),
+                payload: ["missing": .string(missing.joined(separator: ","))],
+                emittedAt: Date()
+            )
+        }
+
+        if case PoseSpecValidationError.bindingMissingBodyPointsSet = error {
+            return Prompt(
+                key: "posespec_binding_missing_modal",
+                level: .L3,
+                surface: .cameraModalCenter,
+                priority: 99,
+                blocksShutter: true,
+                isClosable: false,
+                autoDismissSeconds: nil,
+                gate: .stateOnly,
+                title: "binding 缺失",
+                message: "PoseSpec 不完整：binding 缺失。\n\nmissing=bodyPoints",
+                primaryActionId: "retry",
+                primaryTitle: "重试",
+                secondaryActionId: nil,
+                secondaryTitle: nil,
+                tertiaryActionId: nil,
+                tertiaryTitle: nil,
+                throttle: .init(
+                    perKeyMinIntervalSec: 0,
+                    globalWindowSec: 0,
+                    globalMaxCountInWindow: 0,
+                    suppressAfterDismissSec: 0
+                ),
+                payload: ["missing": .string("bodyPoints")],
+                emittedAt: Date()
+            )
+        }
+
+        if case PoseSpecValidationError.bindingBodyPointsSetMismatch = error {
+            return Prompt(
+                key: "posespec_binding_missing_modal",
+                level: .L3,
+                surface: .cameraModalCenter,
+                priority: 99,
+                blocksShutter: true,
+                isClosable: false,
+                autoDismissSeconds: nil,
+                gate: .stateOnly,
+                title: "binding 缺失",
+                message: "PoseSpec 不完整：binding 缺失。\n\nbodyPoints 定义不符合 PRD 4.4.2",
+                primaryActionId: "retry",
+                primaryTitle: "重试",
+                secondaryActionId: nil,
+                secondaryTitle: nil,
+                tertiaryActionId: nil,
+                tertiaryTitle: nil,
+                throttle: .init(
+                    perKeyMinIntervalSec: 0,
+                    globalWindowSec: 0,
+                    globalMaxCountInWindow: 0,
+                    suppressAfterDismissSec: 0
+                ),
+                payload: [:],
                 emittedAt: Date()
             )
         }
