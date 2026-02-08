@@ -5,7 +5,6 @@ import UIKit
 #endif
 
 // M5.1: Filmstrip component (horizontal thumbnails).
-// This is intentionally minimal; badges/order/liked wiring lands in later milestones.
 struct Filmstrip: View {
     let items: [SessionRepository.SessionItemSummary]
     @Binding var selectedItemId: String?
@@ -14,6 +13,7 @@ struct Filmstrip: View {
     var itemSpacing: CGFloat = 10
     var cornerRadius: CGFloat = 14
     var onSelect: (SessionRepository.SessionItemSummary) -> Void = { _ in }
+    var onToggleLike: (SessionRepository.SessionItemSummary) -> Void = { _ in }
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -24,16 +24,20 @@ struct Filmstrip: View {
                         state: item.state,
                         thumbnailState: item.thumbnailState,
                         shotSeq: item.shotSeq,
+                        liked: item.liked,
                         size: itemSize,
                         cornerRadius: cornerRadius,
-                        isSelected: item.itemId == selectedItemId
+                        isSelected: item.itemId == selectedItemId,
+                        onSelect: {
+                            selectedItemId = item.itemId
+                            onSelect(item)
+                        },
+                        onToggleLike: {
+                            onToggleLike(item)
+                        }
                     )
-                    .onTapGesture {
-                        selectedItemId = item.itemId
-                        onSelect(item)
-                    }
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Photo \(item.shotSeq)")
+                    .accessibilityLabel("Photo \(item.shotSeq)\(item.liked ? ", liked" : "")")
                 }
             }
             .padding(.horizontal, 2)
@@ -46,47 +50,82 @@ private struct FilmstripThumb: View {
     let state: SessionItemState
     let thumbnailState: ThumbnailState?
     let shotSeq: Int
+    let liked: Bool
     let size: CGFloat
     let cornerRadius: CGFloat
     let isSelected: Bool
+    let onSelect: () -> Void
+    let onToggleLike: () -> Void
 
     var body: some View {
         ZStack {
-            thumbImage
-                .resizable()
-                .scaledToFill()
-                .frame(width: size, height: size)
-                .clipped()
+            Button(action: onSelect) {
+                ZStack {
+                    thumbImage
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: size, height: size)
+                        .clipped()
 
-            if state == .write_failed {
-                Color.black.opacity(0.32)
-            }
+                    if state == .write_failed {
+                        Color.black.opacity(0.32)
+                    }
 
-            VStack {
-                Spacer(minLength: 0)
-                HStack {
-                    Spacer(minLength: 0)
-                    Text("\(shotSeq)")
-                        .font(.caption2.weight(.semibold))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(
-                            Capsule(style: .continuous)
-                                .fill(Color.black.opacity(0.28))
-                        )
-                        .foregroundStyle(.white)
-                        .padding(6)
+                    VStack {
+                        Spacer(minLength: 0)
+                        HStack {
+                            if liked {
+                                Image(systemName: "heart.fill")
+                                    .font(.caption.weight(.heavy))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 4)
+                                    .background(Capsule(style: .continuous).fill(Color.red.opacity(0.88)))
+                                    .padding(6)
+                            }
+                            Spacer(minLength: 0)
+                            Text("\(shotSeq)")
+                                .font(.caption2.weight(.semibold))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(
+                                    Capsule(style: .continuous)
+                                        .fill(Color.black.opacity(0.28))
+                                )
+                                .foregroundStyle(.white)
+                                .padding(6)
+                        }
+                    }
+
+                    VStack {
+                        HStack {
+                            Spacer(minLength: 0)
+                            badgeView
+                                .padding(6)
+                        }
+                        Spacer(minLength: 0)
+                    }
                 }
             }
+            .buttonStyle(.plain)
 
             VStack {
                 HStack {
+                    Button(action: onToggleLike) {
+                        Image(systemName: liked ? "heart.slash" : "heart")
+                            .font(.caption.weight(.heavy))
+                            .foregroundStyle(.white)
+                            .frame(width: 28, height: 28)
+                            .background(Circle().fill(Color.black.opacity(0.42)))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(liked ? "Unlike" : "Like")
+
                     Spacer(minLength: 0)
-                    badgeView
-                        .padding(6)
                 }
                 Spacer(minLength: 0)
             }
+            .padding(6)
         }
         .frame(width: size, height: size)
         .background(

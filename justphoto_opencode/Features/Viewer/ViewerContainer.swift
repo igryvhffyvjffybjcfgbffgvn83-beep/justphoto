@@ -73,11 +73,13 @@ struct ViewerContainer: View {
     let items: [SessionRepository.SessionItemSummary]
     let initialItemId: String?
 
+    @State private var itemsState: [SessionRepository.SessionItemSummary]
     @State private var selectedItemId: String
 
     init(items: [SessionRepository.SessionItemSummary], initialItemId: String?) {
         self.items = items
         self.initialItemId = initialItemId
+        _itemsState = State(initialValue: items)
         _selectedItemId = State(initialValue: initialItemId ?? items.first?.itemId ?? "")
     }
 
@@ -85,7 +87,7 @@ struct ViewerContainer: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            if items.isEmpty {
+            if itemsState.isEmpty {
                 VStack(spacing: 12) {
                     Text("No items")
                         .foregroundStyle(.white)
@@ -95,7 +97,7 @@ struct ViewerContainer: View {
                 }
             } else {
                 TabView(selection: $selectedItemId) {
-                    ForEach(items, id: \.itemId) { item in
+                    ForEach(itemsState, id: \.itemId) { item in
                         ViewerPage(item: item)
                             .tag(item.itemId)
                     }
@@ -111,8 +113,11 @@ struct ViewerContainer: View {
         }
         .onAppear {
             if selectedItemId.isEmpty {
-                selectedItemId = items.first?.itemId ?? ""
+                selectedItemId = itemsState.first?.itemId ?? ""
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: CaptureEvents.sessionItemsChanged)) { _ in
+            refreshItemsFromDB()
         }
     }
 
@@ -143,26 +148,63 @@ struct ViewerContainer: View {
             Spacer(minLength: 0)
 
             Button {
-                // Like wiring lands in M5.8 (persistence).
+                toggleLikeForCurrentItem()
             } label: {
                 Image(systemName: currentItem?.liked == true ? "heart.fill" : "heart")
                     .font(.headline.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.72))
+                    .foregroundStyle((currentItem?.liked == true) ? .white : .white.opacity(0.72))
                     .frame(width: 36, height: 36)
                     .background(Circle().fill(Color.white.opacity(0.12)))
             }
-            .disabled(true)
         }
         .padding(.horizontal, 12)
     }
 
     private var currentItem: SessionRepository.SessionItemSummary? {
-        items.first { $0.itemId == selectedItemId }
+        itemsState.first { $0.itemId == selectedItemId }
     }
 
     private var currentIndexText: String {
-        let idx = items.firstIndex { $0.itemId == selectedItemId } ?? 0
-        return "\(idx + 1)/\(items.count)"
+        let idx = itemsState.firstIndex { $0.itemId == selectedItemId } ?? 0
+        return "\(idx + 1)/\(itemsState.count)"
+    }
+
+    private func toggleLikeForCurrentItem() {
+        guard let current = currentItem else { return }
+        let next = !current.liked
+        do {
+            _ = try SessionRepository.shared.setLiked(itemId: current.itemId, liked: next)
+            itemsState = itemsState.map { s in
+                if s.itemId == current.itemId {
+                    return SessionRepository.SessionItemSummary(
+                        itemId: s.itemId,
+                        sessionId: s.sessionId,
+                        shotSeq: s.shotSeq,
+                        createdAtMs: s.createdAtMs,
+                        state: s.state,
+                        liked: next,
+                        assetId: s.assetId,
+                        pendingFileRelPath: s.pendingFileRelPath,
+                        thumbCacheRelPath: s.thumbCacheRelPath,
+                        thumbnailState: s.thumbnailState,
+                        albumState: s.albumState
+                    )
+                }
+                return s
+            }
+            NotificationCenter.default.post(name: CaptureEvents.sessionItemsChanged, object: nil)
+        } catch {
+            print("ViewerToggleLikeFAILED: item_id=\(current.itemId) error=\(error)")
+        }
+    }
+
+    private func refreshItemsFromDB() {
+        let limit = max(30, itemsState.count)
+        do {
+            itemsState = try SessionRepository.shared.latestItemsForCurrentSession(limit: limit)
+        } catch {
+            print("ViewerItemsRefreshFAILED: \(error)")
+        }
     }
 }
 

@@ -60,6 +60,14 @@ struct CameraScreen: View {
                             #if DEBUG
                             print("FilmstripSelect: item_id=\(item.itemId) shot_seq=\(item.shotSeq)")
                             #endif
+                        },
+                        onToggleLike: { item in
+                            do {
+                                _ = try SessionRepository.shared.setLiked(itemId: item.itemId, liked: !item.liked)
+                                NotificationCenter.default.post(name: CaptureEvents.sessionItemsChanged, object: nil)
+                            } catch {
+                                print("FilmstripToggleLikeFAILED: item_id=\(item.itemId) error=\(error)")
+                            }
                         }
                     )
                     .frame(height: 66)

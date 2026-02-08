@@ -379,6 +379,38 @@ final class SessionRepository {
     }
 
     @discardableResult
+    func setLiked(itemId: String, liked: Bool, now: Date = .init(), flush: Bool = true) throws -> Int {
+        let q = try queue()
+        let nowMs = Self.nowMs(now)
+
+        var updated = 0
+        try q.write { db in
+            try db.execute(
+                sql: "UPDATE session_items SET liked = ? WHERE item_id = ?",
+                arguments: [liked ? 1 : 0, itemId]
+            )
+            updated = db.changesCount
+            if updated > 0 {
+                try db.execute(
+                    sql: "UPDATE sessions SET last_active_at_ms = ? WHERE session_id = (SELECT session_id FROM session_items WHERE item_id = ?)",
+                    arguments: [nowMs, itemId]
+                )
+            }
+        }
+
+        #if DEBUG
+        if updated > 0 {
+            print("LikedUpdated: item_id=\(itemId) liked=\(liked)")
+        }
+        #endif
+
+        if flush {
+            DatabaseManager.shared.flush(reason: "liked")
+        }
+        return updated
+    }
+
+    @discardableResult
     func ensureFreshSession(scene: String, now: Date = .init()) throws -> (sessionId: String, changed: Bool) {
         let nowMs = Self.nowMs(now)
         if let current = try loadCurrentSession() {
