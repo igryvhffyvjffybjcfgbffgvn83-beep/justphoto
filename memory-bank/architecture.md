@@ -119,6 +119,7 @@ M4.4 (Workset full flow):
   - Version gate: `PoseSpecValidator.validatePrdVersion(expected:)` blocks Camera when prdVersion mismatches (M6.4).
   - Binding gate: `PoseSpecValidator.validateBindingAliasesMinimalSet` blocks Camera when required binding aliases/sets are missing (M6.5).
   - ROI gate: `PoseSpecValidator.validateRoisDictionary` blocks Camera when faceROI/eyeROI/bgROI are missing or not parseable (M6.6).
+  - Coordinate system: `PoseSpecCoordinateNormalizer` normalizes points into portrait imageNormalized space before evaluation (M6.7).
 
 6) Prompt System (L1/L2/L3)
 - Centralized, contract-driven prompt presenter (Toast/Banner/Modal) with mutual exclusion and throttling.

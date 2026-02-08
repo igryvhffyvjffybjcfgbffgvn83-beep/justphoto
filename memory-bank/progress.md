@@ -141,7 +141,7 @@ Notes / Known limitations (track for later milestones):
 - [x] M6.4 Enforce prdVersion match (PRD 4.4.1)
 - [x] M6.5 Validate binding.aliases minimal set (PRD 4.4.2)
 - [x] M6.6 Validate rois dictionary (PRD 4.4.3)
-- [ ] M6.7 Implement “portrait normalized” coordinate normalization (PoseSpec.coordinateSystem)
+- [x] M6.7 Implement “portrait normalized” coordinate normalization (PoseSpec.coordinateSystem)
 - [ ] M6.8 Create VisionPipeline files (pose + face)
 - [ ] M6.9 Create ROIComputer file (faceROI/eyeROI/bgROI)
 - [ ] M6.10 Create MetricComputer file (only metrics needed by PoseSpec v1.1.4)
