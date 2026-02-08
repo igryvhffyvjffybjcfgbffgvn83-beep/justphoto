@@ -175,6 +175,7 @@ private struct ViewerPage: View {
     let item: SessionRepository.SessionItemSummary
 
     @State private var zoomScale: CGFloat = 1.0
+    @State private var isPinching: Bool = false
 
     var body: some View {
         ZStack {
@@ -182,7 +183,7 @@ private struct ViewerPage: View {
             zoomable
 
             // Disable page swiping while zoomed-in (but allow slight zoom to still swipe).
-            PagingScrollGateView(isPagingEnabled: zoomScale <= ViewerZoomRules.scaleAsOneThreshold)
+            PagingScrollGateView(isPagingEnabled: !isPinching && zoomScale <= ViewerZoomRules.scaleAsOneThreshold)
                 .frame(width: 0, height: 0)
         }
         .ignoresSafeArea()
@@ -191,7 +192,7 @@ private struct ViewerPage: View {
     @ViewBuilder
     private var zoomable: some View {
 #if canImport(UIKit)
-        ZoomableImageScrollView(image: uiImageForViewer, imageId: item.itemId, zoomScale: $zoomScale)
+        ZoomableImageScrollView(image: uiImageForViewer, imageId: item.itemId, zoomScale: $zoomScale, isPinching: $isPinching)
 #else
         Image(systemName: "photo")
 #endif

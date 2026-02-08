@@ -129,7 +129,7 @@ Notes / Known limitations (track for later milestones):
 - [x] M5.4 Create ViewerContainer file (x/y, close, like)
 - [x] M5.5 Create Zoom/Pan UIKit bridge file
 - [x] M5.6 Implement scale<=1.01 treated as 1 (PRD)
-- [ ] M5.7 Implement “pinch wins over swipe”
+- [x] M5.7 Implement “pinch wins over swipe”
 - [ ] M5.8 Persist liked in DB (GRDB usage)
 - [ ] M5.9 Attempt sync to system Favorites (Full access only; failure non-blocking)
 

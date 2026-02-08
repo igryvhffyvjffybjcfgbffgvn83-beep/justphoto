@@ -9,6 +9,7 @@ struct ZoomableImageScrollView: UIViewRepresentable {
     let imageId: String
 
     @Binding var zoomScale: CGFloat
+    @Binding var isPinching: Bool
 
     var minimumZoomScale: CGFloat = 1.0
     var maximumZoomScale: CGFloat = 4.0
@@ -50,20 +51,28 @@ struct ZoomableImageScrollView: UIViewRepresentable {
         context.coordinator.imageView = imageView
         context.coordinator.lastImageId = imageId
         context.coordinator.zoomScaleBinding = $zoomScale
+        context.coordinator.isPinchingBinding = $isPinching
+
+        if let pinch = scrollView.pinchGestureRecognizer {
+            pinch.addTarget(context.coordinator, action: #selector(Coordinator.handlePinch(_:)))
+        }
 
         zoomScale = 1.0
+        isPinching = false
         return scrollView
     }
 
     func updateUIView(_ scrollView: UIScrollView, context: Context) {
         context.coordinator.imageView?.image = image
         context.coordinator.zoomScaleBinding = $zoomScale
+        context.coordinator.isPinchingBinding = $isPinching
 
         if context.coordinator.lastImageId != imageId {
             context.coordinator.lastImageId = imageId
             scrollView.setZoomScale(1.0, animated: false)
             scrollView.setContentOffset(.zero, animated: false)
             zoomScale = 1.0
+            isPinching = false
         }
     }
 
@@ -71,6 +80,16 @@ struct ZoomableImageScrollView: UIViewRepresentable {
         fileprivate weak var imageView: UIImageView?
         fileprivate var lastImageId: String = ""
         fileprivate var zoomScaleBinding: Binding<CGFloat>?
+        fileprivate var isPinchingBinding: Binding<Bool>?
+
+        @objc func handlePinch(_ gesture: UIPinchGestureRecognizer) {
+            switch gesture.state {
+            case .began, .changed:
+                isPinchingBinding?.wrappedValue = true
+            default:
+                isPinchingBinding?.wrappedValue = false
+            }
+        }
 
         func viewForZooming(in scrollView: UIScrollView) -> UIView? {
             _ = scrollView
@@ -93,10 +112,12 @@ struct ZoomableImageScrollView: UIViewRepresentable {
 struct ZoomableImageScrollView: View {
     let imageId: String
     @Binding var zoomScale: CGFloat
+    @Binding var isPinching: Bool
 
     var body: some View {
         _ = imageId
         _ = zoomScale
+        _ = isPinching
         return Image(systemName: "photo")
     }
 }
