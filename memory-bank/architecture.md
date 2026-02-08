@@ -115,6 +115,7 @@ M4.4 (Workset full flow):
 - Emits A.13 diagnostics events for match state, fallbacks, and related invariants.
   - Bundle resource: `PoseSpec.json` is shipped inside the app bundle (M6.1).
   - Loader: `PoseSpecLoader` loads and decodes PoseSpec from the bundle (M6.2).
+  - Validator: `PoseSpecValidator` enforces required PoseSpec keys; invalid PoseSpec blocks Camera via a L3 modal (M6.3).
 
 6) Prompt System (L1/L2/L3)
 - Centralized, contract-driven prompt presenter (Toast/Banner/Modal) with mutual exclusion and throttling.

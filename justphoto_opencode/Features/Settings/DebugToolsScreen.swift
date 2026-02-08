@@ -1018,6 +1018,16 @@ struct DebugToolsScreen: View {
                     }
                 }
 
+                Button("M6.3 ArmBrokenPoseSpecOnce") {
+                    PoseSpecDebugSettings.armUseBrokenPoseSpecOnce()
+                    print("PoseSpecDebug: armed broken PoseSpec once")
+                    statusText = "M6.3 ArmBrokenPoseSpecOnce: armed\n\nRelaunch app to trigger validation"
+                    statusIsError = false
+                    alertTitle = "PoseSpec debug"
+                    alertMessage = "armed (broken once)"
+                    showAlert = true
+                }
+
                 Button("CreateWriteFailedItem") {
                     do {
                         let itemId = try SessionRepository.shared.insertWriteFailedItemAndFlush()

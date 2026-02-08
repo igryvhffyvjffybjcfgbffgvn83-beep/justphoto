@@ -39,6 +39,21 @@ final class PoseSpecLoader {
         guard let url = bundle.url(forResource: "PoseSpec", withExtension: "json") else {
             throw PoseSpecLoaderError.missingResource
         }
-        return try Data(contentsOf: url)
+        let raw = try Data(contentsOf: url)
+
+#if DEBUG
+        if PoseSpecDebugSettings.consumeUseBrokenPoseSpecOnce() {
+            // Deliberately break required fields for M6.3 validation verify.
+            if var obj = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any] {
+                obj.removeValue(forKey: "binding")
+                if let broken = try? JSONSerialization.data(withJSONObject: obj) {
+                    print("PoseSpecDebug: using broken PoseSpec once")
+                    return broken
+                }
+            }
+        }
+#endif
+
+        return raw
     }
 }

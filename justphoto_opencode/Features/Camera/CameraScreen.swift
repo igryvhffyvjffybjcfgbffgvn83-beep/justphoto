@@ -35,6 +35,8 @@ struct CameraScreen: View {
     @State private var writeFailedCount: Int = 0
     @State private var albumAddFailedCount: Int = 0
 
+    @State private var poseSpecValid: Bool = true
+
     @State private var filmstripItems: [SessionRepository.SessionItemSummary] = []
     @State private var selectedFilmstripItemId: String? = nil
     @State private var lastFilmstripCount: Int = 0
@@ -89,7 +91,7 @@ struct CameraScreen: View {
                     CaptureCoordinator.shared.shutterTapped()
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(!shutterGateResult.isEnabled)
+                .disabled(!shutterGateResult.isEnabled || !poseSpecValid)
 
 #if DEBUG
                 Button("ExplainShutterDisabledReason") {
@@ -162,6 +164,7 @@ struct CameraScreen: View {
             .navigationTitle("Just Photo")
         }
         .task {
+            checkPoseSpecOrBlock()
             refreshCameraAuth()
             refreshWarmupState()
             refreshSessionCounts()
@@ -377,6 +380,9 @@ struct CameraScreen: View {
                 print("OpenSettingsUnavailable")
                 #endif
 #endif
+            case "posespec_invalid_modal":
+                guard e.actionId == "retry" else { break }
+                checkPoseSpecOrBlock()
             default:
                 break
             }
@@ -458,6 +464,52 @@ struct CameraScreen: View {
         didShowCameraPermissionPreprompt = true
         cameraPermissionDeclined = false
         promptCenter.show(makeCameraPermissionPreprompt())
+    }
+
+    private func checkPoseSpecOrBlock() {
+        do {
+            let data = try PoseSpecLoader.shared.loadData()
+            try PoseSpecValidator.validateRequiredFields(data: data)
+            poseSpecValid = true
+        } catch {
+            poseSpecValid = false
+            if promptCenter.modal?.key != "posespec_invalid_modal" {
+                promptCenter.show(makePoseSpecInvalidPrompt(error: error))
+            }
+        }
+    }
+
+    private func makePoseSpecInvalidPrompt(error: Error) -> Prompt {
+        #if DEBUG
+        print("PoseSpecInvalid: \(error)")
+        #endif
+
+        return Prompt(
+            key: "posespec_invalid_modal",
+            level: .L3,
+            surface: .cameraModalCenter,
+            priority: 99,
+            blocksShutter: true,
+            isClosable: false,
+            autoDismissSeconds: nil,
+            gate: .stateOnly,
+            title: "PoseSpec 不完整",
+            message: "PoseSpec 不完整，无法继续。\n\n\(error.localizedDescription)",
+            primaryActionId: "retry",
+            primaryTitle: "重试",
+            secondaryActionId: nil,
+            secondaryTitle: nil,
+            tertiaryActionId: nil,
+            tertiaryTitle: nil,
+            throttle: .init(
+                perKeyMinIntervalSec: 0,
+                globalWindowSec: 0,
+                globalMaxCountInWindow: 0,
+                suppressAfterDismissSec: 0
+            ),
+            payload: [:],
+            emittedAt: Date()
+        )
     }
 
     private func refreshCameraAuth() {
