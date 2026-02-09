@@ -7,6 +7,7 @@ import Vision
 // M6.8: Run Vision requests on preview frames to produce landmarks + confidences.
 
 struct VisionLandmark: Sendable {
+    // PoseSpec canonical space: portrait-normalized, Y-Down (origin top-left).
     let pPortrait: CGPoint
     let confidence: Float
 }
@@ -17,10 +18,10 @@ struct VisionPoseResult: Sendable {
 }
 
 struct VisionFaceResult: Sendable {
-    // Portrait-normalized face bounding box.
+    // PoseSpec canonical space: portrait-normalized, Y-Down (origin top-left).
     let faceBBoxPortrait: CGRect
 
-    // Portrait-normalized feature centers.
+    // PoseSpec canonical space: portrait-normalized, Y-Down (origin top-left).
     let leftEyeCenter: VisionLandmark?
     let rightEyeCenter: VisionLandmark?
     let noseCenter: VisionLandmark?
@@ -83,7 +84,7 @@ actor VisionPipeline {
             guard rp.confidence > 0 else { continue }
             let jointName = String(describing: jointKey)
             let key = "body." + jointName
-            let p = Self.toPortraitNormalized(rp.location, sourceOrientation: orientation)
+            let p = PoseSpecCoordinateNormalizer.normalize(rp.location, sourceOrientation: orientation)
             out[key] = VisionLandmark(pPortrait: p, confidence: rp.confidence)
         }
 
@@ -114,7 +115,7 @@ actor VisionPipeline {
         }
 
         let bboxImage = face.boundingBox
-        let bboxPortrait = Self.normalizeRectToPortrait(bboxImage, sourceOrientation: orientation)
+        let bboxPortrait = PoseSpecCoordinateNormalizer.normalizeRect(bboxImage, sourceOrientation: orientation)
 
         let c = face.confidence
 
@@ -133,7 +134,7 @@ actor VisionPipeline {
 
         func mkImagePoint(_ pImage: CGPoint?, confidence: Float) -> VisionLandmark? {
             guard let pImage else { return nil }
-            let pp = Self.toPortraitNormalized(pImage, sourceOrientation: orientation)
+            let pp = PoseSpecCoordinateNormalizer.normalize(pImage, sourceOrientation: orientation)
             return VisionLandmark(pPortrait: pp, confidence: confidence)
         }
 
@@ -217,56 +218,7 @@ actor VisionPipeline {
         return RegionSummary(center: CGPoint(x: cx, y: cy), openness: openness)
     }
 
-    private static func normalizeRectToPortrait(_ r: CGRect, sourceOrientation: CGImagePropertyOrientation) -> CGRect {
-        let corners = [
-            CGPoint(x: r.minX, y: r.minY),
-            CGPoint(x: r.maxX, y: r.minY),
-            CGPoint(x: r.minX, y: r.maxY),
-            CGPoint(x: r.maxX, y: r.maxY),
-        ]
-        let pts = corners.map { toPortraitNormalized($0, sourceOrientation: sourceOrientation) }
-
-        let xs = pts.map { $0.x }
-        let ys = pts.map { $0.y }
-        guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max() else {
-            return .zero
-        }
-        return CGRect(
-            x: minX,
-            y: minY,
-            width: max(CGFloat(0), maxX - minX),
-            height: max(CGFloat(0), maxY - minY)
-        )
-    }
-
-    // Keep the normalization logic local so M6.8 doesn't depend on other files.
-    private static func toPortraitNormalized(_ p: CGPoint, sourceOrientation: CGImagePropertyOrientation) -> CGPoint {
-        let x = p.x
-        let y = p.y
-
-        switch sourceOrientation {
-        case .up:
-            return CGPoint(x: x, y: y)
-        case .down:
-            return CGPoint(x: 1 - x, y: 1 - y)
-        case .left:
-            return CGPoint(x: y, y: 1 - x)
-        case .right:
-            return CGPoint(x: 1 - y, y: x)
-
-        case .upMirrored:
-            return CGPoint(x: 1 - x, y: y)
-        case .downMirrored:
-            return CGPoint(x: x, y: 1 - y)
-        case .leftMirrored:
-            return CGPoint(x: 1 - y, y: 1 - x)
-        case .rightMirrored:
-            return CGPoint(x: y, y: x)
-
-        @unknown default:
-            return CGPoint(x: x, y: y)
-        }
-    }
+    // M6.8: Coordinate normalization is centralized in PoseSpecCoordinateNormalizer.
 }
 
 @MainActor

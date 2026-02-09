@@ -10,14 +10,43 @@
 		B1A9F0A12F40111100AA11A1 /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = B1A9F0A22F40111100AA11A2 /* GRDB */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		B1A1009A2F39DA46006B4753 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B182BEA52F3072C000BC21A5 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B182BEAC2F3072C000BC21A5;
+			remoteInfo = justphoto_opencode;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		B1A1FFA82F39B952006B4753 /* Embed ExtensionKit Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(EXTENSIONS_FOLDER_PATH)";
+			dstSubfolderSpec = 16;
+			files = (
+			);
+			name = "Embed ExtensionKit Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		B182BEAD2F3072C000BC21A5 /* justphoto_opencode.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = justphoto_opencode.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B1A100962F39DA46006B4753 /* justphoto_opencodeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = justphoto_opencodeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		B182BEAF2F3072C000BC21A5 /* justphoto_opencode */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = justphoto_opencode;
+			sourceTree = "<group>";
+		};
+		B1A100972F39DA46006B4753 /* justphoto_opencodeTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = justphoto_opencodeTests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -31,6 +60,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B1A100932F39DA46006B4753 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -38,6 +74,7 @@
 			isa = PBXGroup;
 			children = (
 				B182BEAF2F3072C000BC21A5 /* justphoto_opencode */,
+				B1A100972F39DA46006B4753 /* justphoto_opencodeTests */,
 				B182BEAE2F3072C000BC21A5 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -46,6 +83,7 @@
 			isa = PBXGroup;
 			children = (
 				B182BEAD2F3072C000BC21A5 /* justphoto_opencode.app */,
+				B1A100962F39DA46006B4753 /* justphoto_opencodeTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -60,6 +98,7 @@
 				B182BEA92F3072C000BC21A5 /* Sources */,
 				B182BEAA2F3072C000BC21A5 /* Frameworks */,
 				B182BEAB2F3072C000BC21A5 /* Resources */,
+				B1A1FFA82F39B952006B4753 /* Embed ExtensionKit Extensions */,
 			);
 			buildRules = (
 			);
@@ -76,6 +115,29 @@
 			productReference = B182BEAD2F3072C000BC21A5 /* justphoto_opencode.app */;
 			productType = "com.apple.product-type.application";
 		};
+		B1A100952F39DA46006B4753 /* justphoto_opencodeTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B1A1009C2F39DA46006B4753 /* Build configuration list for PBXNativeTarget "justphoto_opencodeTests" */;
+			buildPhases = (
+				B1A100922F39DA46006B4753 /* Sources */,
+				B1A100932F39DA46006B4753 /* Frameworks */,
+				B1A100942F39DA46006B4753 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				B1A1009B2F39DA46006B4753 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				B1A100972F39DA46006B4753 /* justphoto_opencodeTests */,
+			);
+			name = justphoto_opencodeTests;
+			packageProductDependencies = (
+			);
+			productName = justphoto_opencodeTests;
+			productReference = B1A100962F39DA46006B4753 /* justphoto_opencodeTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -88,6 +150,10 @@
 				TargetAttributes = {
 					B182BEAC2F3072C000BC21A5 = {
 						CreatedOnToolsVersion = 26.2;
+					};
+					B1A100952F39DA46006B4753 = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = B182BEAC2F3072C000BC21A5;
 					};
 				};
 			};
@@ -109,12 +175,20 @@
 			projectRoot = "";
 			targets = (
 				B182BEAC2F3072C000BC21A5 /* justphoto_opencode */,
+				B1A100952F39DA46006B4753 /* justphoto_opencodeTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		B182BEAB2F3072C000BC21A5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B1A100942F39DA46006B4753 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -131,7 +205,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B1A100922F39DA46006B4753 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B1A1009B2F39DA46006B4753 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B182BEAC2F3072C000BC21A5 /* justphoto_opencode */;
+			targetProxy = B1A1009A2F39DA46006B4753 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		B182BEB62F3072C100BC21A5 /* Debug */ = {
@@ -329,6 +418,48 @@
 			};
 			name = Release;
 		};
+		B1A1009D2F39DA46006B4753 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 589M7G78S4;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "fanqie.justphoto-opencode.justphoto-opencodeTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/justphoto_opencode.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/justphoto_opencode";
+			};
+			name = Debug;
+		};
+		B1A1009E2F39DA46006B4753 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 589M7G78S4;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "fanqie.justphoto-opencode.justphoto-opencodeTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/justphoto_opencode.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/justphoto_opencode";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -346,6 +477,15 @@
 			buildConfigurations = (
 				B182BEB92F3072C100BC21A5 /* Debug */,
 				B182BEBA2F3072C100BC21A5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		B1A1009C2F39DA46006B4753 /* Build configuration list for PBXNativeTarget "justphoto_opencodeTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B1A1009D2F39DA46006B4753 /* Debug */,
+				B1A1009E2F39DA46006B4753 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

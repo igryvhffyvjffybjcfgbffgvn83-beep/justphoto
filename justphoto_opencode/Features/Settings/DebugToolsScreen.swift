@@ -1067,7 +1067,7 @@ struct DebugToolsScreen: View {
                     showAlert = true
                 }
 
-                Button("M6.7 PrintPortraitNormalization") {
+                Button("M6.7 PrintCanonicalNormalization") {
                     #if canImport(UIKit)
                     let io = PoseSpecOrientation.currentInterfaceOrientation()
                     #else
@@ -1078,18 +1078,18 @@ struct DebugToolsScreen: View {
                     let front = PoseSpecOrientation.cgImageOrientation(interface: io as Any, isFrontCamera: true)
                     let p = CGPoint(x: 0.2, y: 0.3)
 
-                    let backOut = PoseSpecCoordinateNormalizer.toPortraitNormalized(p, sourceOrientation: back)
-                    let frontOut = PoseSpecCoordinateNormalizer.toPortraitNormalized(p, sourceOrientation: front)
+                    let backOut = PoseSpecCoordinateNormalizer.normalize(p, sourceOrientation: back)
+                    let frontOut = PoseSpecCoordinateNormalizer.normalize(p, sourceOrientation: front)
 
-                    print("PoseSpecNormalize: normalizedSpace=portrait")
+                    print("PoseSpecNormalize: normalizedSpace=canonical_yDown")
                     print("PoseSpecNormalize: interface=\(String(describing: io))")
-                    print("PoseSpecNormalize: sample_in=\(p) back_orient=\(back.rawValue) out=\(backOut)")
-                    print("PoseSpecNormalize: sample_in=\(p) front_orient=\(front.rawValue) out=\(frontOut)")
+                    print("PoseSpecNormalize: sample_in_vision_yUp=\(p) back_orient=\(back.rawValue) out=\(backOut)")
+                    print("PoseSpecNormalize: sample_in_vision_yUp=\(p) front_orient=\(front.rawValue) out=\(frontOut)")
 
-                    statusText = "M6.7 portrait normalized\n\ninterface=\(String(describing: io))\nback=\(back.rawValue) out=\(backOut)\nfront=\(front.rawValue) out=\(frontOut)"
+                    statusText = "M6.7 canonical (portrait + y-down)\n\ninterface=\(String(describing: io))\nback=\(back.rawValue) out=\(backOut)\nfront=\(front.rawValue) out=\(frontOut)"
                     statusIsError = false
                     alertTitle = "M6.7"
-                    alertMessage = "normalizedSpace=portrait"
+                    alertMessage = "normalizedSpace=canonical_yDown"
                     showAlert = true
                 }
 
@@ -1336,7 +1336,7 @@ struct DebugToolsScreen: View {
                     showAlert = true
                 }
 
-                Button("M6.7 PrintPortraitNormalization") {
+                Button("M6.7 PrintCanonicalNormalization") {
                     #if canImport(UIKit)
                     let io = PoseSpecOrientation.currentInterfaceOrientation()
                     #else
@@ -1347,18 +1347,18 @@ struct DebugToolsScreen: View {
                     let front = PoseSpecOrientation.cgImageOrientation(interface: io as Any, isFrontCamera: true)
                     let p = CGPoint(x: 0.2, y: 0.3)
 
-                    let backOut = PoseSpecCoordinateNormalizer.toPortraitNormalized(p, sourceOrientation: back)
-                    let frontOut = PoseSpecCoordinateNormalizer.toPortraitNormalized(p, sourceOrientation: front)
+                    let backOut = PoseSpecCoordinateNormalizer.normalize(p, sourceOrientation: back)
+                    let frontOut = PoseSpecCoordinateNormalizer.normalize(p, sourceOrientation: front)
 
-                    print("PoseSpecNormalize: normalizedSpace=portrait")
+                    print("PoseSpecNormalize: normalizedSpace=canonical_yDown")
                     print("PoseSpecNormalize: interface=\(String(describing: io))")
-                    print("PoseSpecNormalize: sample_in=\(p) back_orient=\(back.rawValue) out=\(backOut)")
-                    print("PoseSpecNormalize: sample_in=\(p) front_orient=\(front.rawValue) out=\(frontOut)")
+                    print("PoseSpecNormalize: sample_in_vision_yUp=\(p) back_orient=\(back.rawValue) out=\(backOut)")
+                    print("PoseSpecNormalize: sample_in_vision_yUp=\(p) front_orient=\(front.rawValue) out=\(frontOut)")
 
-                    statusText = "M6.7 portrait normalized\n\ninterface=\(String(describing: io))\nback=\(back.rawValue) out=\(backOut)\nfront=\(front.rawValue) out=\(frontOut)"
+                    statusText = "M6.7 canonical (portrait + y-down)\n\ninterface=\(String(describing: io))\nback=\(back.rawValue) out=\(backOut)\nfront=\(front.rawValue) out=\(frontOut)"
                     statusIsError = false
                     alertTitle = "M6.7"
-                    alertMessage = "normalizedSpace=portrait"
+                    alertMessage = "normalizedSpace=canonical_yDown"
                     showAlert = true
                 }
             }

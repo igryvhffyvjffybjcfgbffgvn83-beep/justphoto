@@ -1,11 +1,53 @@
 import CoreGraphics
 import ImageIO
 
-// M6.7: Normalize points into a single, portrait-normalized space.
+// M6.7: Canonical coordinate space for PoseSpec.
 //
-// Contract: x/y are normalized to [0,1]. The output is always in `.up` portrait space.
+// Canonical Space (M6.7):
+// - Normalized [0,1]
+// - Portrait `.up` space
+// - Y-Down (origin at top-left), consistent with UIKit/SwiftUI
+//
+// Vision commonly returns normalized points in Y-Up (origin at bottom-left).
+// This normalizer performs the one-time flip (y = 1 - y) internally so all
+// upper layers only ever see Y-Down.
 enum PoseSpecCoordinateNormalizer {
-    static func toPortraitNormalized(_ p: CGPoint, sourceOrientation: CGImagePropertyOrientation) -> CGPoint {
+    /// Normalize a Vision-provided point into PoseSpec canonical space.
+    static func normalize(_ pVision: CGPoint, sourceOrientation: CGImagePropertyOrientation) -> CGPoint {
+        // 1) Rotate/mirror into portrait `.up` space (still Y-Up).
+        let pPortraitYUp = toPortraitNormalizedYUp(pVision, sourceOrientation: sourceOrientation)
+        // 2) One-time flip into canonical Y-Down.
+        return CGPoint(x: pPortraitYUp.x, y: 1.0 - pPortraitYUp.y)
+    }
+
+    /// Normalize a Vision-provided rect into PoseSpec canonical space.
+    static func normalizeRect(_ rVision: CGRect, sourceOrientation: CGImagePropertyOrientation) -> CGRect {
+        let corners = [
+            CGPoint(x: rVision.minX, y: rVision.minY),
+            CGPoint(x: rVision.maxX, y: rVision.minY),
+            CGPoint(x: rVision.minX, y: rVision.maxY),
+            CGPoint(x: rVision.maxX, y: rVision.maxY),
+        ]
+
+        let pts = corners.map { normalize($0, sourceOrientation: sourceOrientation) }
+        let xs = pts.map { $0.x }
+        let ys = pts.map { $0.y }
+        guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max() else {
+            return .zero
+        }
+
+        return CGRect(
+            x: minX,
+            y: minY,
+            width: max(CGFloat(0), maxX - minX),
+            height: max(CGFloat(0), maxY - minY)
+        )
+    }
+
+    // MARK: - Internal helpers
+    // Portrait normalization in Y-Up (Vision native). Keep this private so the
+    // rest of the app cannot accidentally re-introduce mixed coordinate spaces.
+    private static func toPortraitNormalizedYUp(_ p: CGPoint, sourceOrientation: CGImagePropertyOrientation) -> CGPoint {
         let x = p.x
         let y = p.y
 
@@ -24,10 +66,8 @@ enum PoseSpecCoordinateNormalizer {
         case .downMirrored:
             return CGPoint(x: x, y: 1 - y)
         case .leftMirrored:
-            // Mirror + rotate left.
             return CGPoint(x: 1 - y, y: 1 - x)
         case .rightMirrored:
-            // Mirror + rotate right.
             return CGPoint(x: y, y: x)
 
         @unknown default:
@@ -35,3 +75,6 @@ enum PoseSpecCoordinateNormalizer {
         }
     }
 }
+
+// M6.8: Single Source of Truth alias used across the pipeline.
+typealias CoordinateNormalizer = PoseSpecCoordinateNormalizer

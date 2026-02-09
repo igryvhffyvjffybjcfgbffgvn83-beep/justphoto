@@ -84,9 +84,8 @@ final class PreviewUIView: UIView {
     }
 
     private func convertPortraitNormalizedToLayerRect(_ r: CGRect) -> CGRect {
-        // Our portrait-normalized space uses y-up; AVCaptureMetadataOutput uses y-down.
-        let metadata = CGRect(x: r.minX, y: 1.0 - r.maxY, width: r.width, height: r.height)
-        return videoPreviewLayer.layerRectConverted(fromMetadataOutputRect: metadata)
+        // PoseSpec canonical space is portrait-normalized and Y-Down, matching AVCaptureMetadataOutput.
+        return videoPreviewLayer.layerRectConverted(fromMetadataOutputRect: r)
     }
 }
 #else
