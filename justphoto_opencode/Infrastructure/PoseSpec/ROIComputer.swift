@@ -23,7 +23,7 @@ enum ROIComputer {
         }
 
         // Phase B1: Fix "one-eye" geometry/iteration bug by explicitly computing left/right eye ROIs.
-        // We intentionally do not do confidence filtering in this phase.
+        // Phase B2: Add per-eye filtering so left/right ROIs disappear independently when occluded.
         let d: CGFloat = {
             if let l = face.leftEyeCenter?.pPortrait, let r = face.rightEyeCenter?.pPortrait {
                 let dx = l.x - r.x
@@ -38,14 +38,23 @@ enum ROIComputer {
         let perEyeW = rules.eyeWCoeff * 0.5
         let perEyeH = rules.eyeHCoeff * 0.5
 
-        if let leftEye = face.leftEyeCenter {
+        // Phase B2: Precision-estimate gate (smaller is better).
+        // Empirical baseline (iPhone 16 Pro, back cam, portrait): good eyes show ~0.005-0.009.
+        // Start with a conservative margin so good eyes stay, occluded/phantom eyes drop.
+        let eyePrecisionMaxThreshold: Float = 0.012
+
+        #if DEBUG
+        maybePrintEyeDetectiveLog(face: face, minConf: rules.minLandmarkConfidence, precisionThreshold: eyePrecisionMaxThreshold)
+        #endif
+
+        if let leftEye = face.leftEyeCenter, shouldKeepEyeLandmark(leftEye, minConf: rules.minLandmarkConfidence, precisionThreshold: eyePrecisionMaxThreshold) {
             let raw = computeEyeROI(eyeCenter: leftEye.pPortrait, scale: d, wCoeff: perEyeW, hCoeff: perEyeH)
             let clamped = clampToUnit(raw, unit: unit)
             if !clamped.isNull && !clamped.isEmpty {
                 eyeROIs.append(clamped)
             }
         }
-        if let rightEye = face.rightEyeCenter {
+        if let rightEye = face.rightEyeCenter, shouldKeepEyeLandmark(rightEye, minConf: rules.minLandmarkConfidence, precisionThreshold: eyePrecisionMaxThreshold) {
             let raw = computeEyeROI(eyeCenter: rightEye.pPortrait, scale: d, wCoeff: perEyeW, hCoeff: perEyeH)
             let clamped = clampToUnit(raw, unit: unit)
             if !clamped.isNull && !clamped.isEmpty {
@@ -59,6 +68,74 @@ enum ROIComputer {
 
         return ROISet(faceROI: faceROI, eyeROIs: eyeROIs, bgRingRects: bg)
     }
+
+    private static func shouldKeepEyeLandmark(_ eye: VisionLandmark, minConf: Float, precisionThreshold: Float) -> Bool {
+        if eye.confidence < minConf {
+            return false
+        }
+
+        // Smart filtering: if Vision provides precision estimates, require the worst point to pass the threshold.
+        // If no precision estimate is available, fall back to confidence-only gating.
+        if let precisions = eye.precisionEstimatesPerPoint, let worst = precisions.max() {
+            // Vision precision estimates are "smaller is better" (tighter estimate => higher precision).
+            return worst <= precisionThreshold
+        }
+        return true
+    }
+
+    #if DEBUG
+    private static var lastEyeDetectiveLogTsMs: Int = 0
+
+    private static func maybePrintEyeDetectiveLog(face: VisionFaceResult, minConf: Float, precisionThreshold: Float) {
+        // ROIComputer.compute(...) is called frequently from SwiftUI rendering; throttle to avoid console spam.
+        guard Thread.isMainThread else { return }
+
+        let tsMs = Int(Date().timeIntervalSince1970 * 1000)
+        if tsMs - lastEyeDetectiveLogTsMs < 1000 {
+            return
+        }
+        lastEyeDetectiveLogTsMs = tsMs
+
+        func fmt(_ v: Float?) -> String {
+            guard let v else { return "nil" }
+            return String(format: "%.3f", v)
+        }
+
+        let l = face.leftEyeCenter
+        let r = face.rightEyeCenter
+
+        let lKeep = l.map { shouldKeepEyeLandmark($0, minConf: minConf, precisionThreshold: precisionThreshold) } ?? false
+        let rKeep = r.map { shouldKeepEyeLandmark($0, minConf: minConf, precisionThreshold: precisionThreshold) } ?? false
+
+        let minConfStr = String(format: "%.2f", minConf)
+        let precThrStr = String(format: "%.3f", precisionThreshold)
+
+        if let leftEye = l {
+            print("DEBUG: Eye Precision - Left: \(leftEye.precisionEstimatesPerPoint ?? []), Confidence: \(leftEye.confidence)")
+        } else {
+            print("DEBUG: Eye Precision - Left: [], Confidence: nil")
+        }
+        if let rightEye = r {
+            print("DEBUG: Eye Precision - Right: \(rightEye.precisionEstimatesPerPoint ?? []), Confidence: \(rightEye.confidence)")
+        } else {
+            print("DEBUG: Eye Precision - Right: [], Confidence: nil")
+        }
+
+        func minMax(_ arr: [Float]?) -> (Float?, Float?) {
+            guard let arr, let mn = arr.min(), let mx = arr.max() else { return (nil, nil) }
+            return (mn, mx)
+        }
+
+        let (lMin, lMax) = minMax(l?.precisionEstimatesPerPoint)
+        let (rMin, rMax) = minMax(r?.precisionEstimatesPerPoint)
+
+        print(
+            "EyeDetective: minConf>=\(minConfStr) precisionMax<=\(precThrStr) " +
+                "left(conf=\(fmt(l?.confidence)) p[min,max]=[\(fmt(lMin)),\(fmt(lMax))] keep=\(lKeep)) " +
+                "right(conf=\(fmt(r?.confidence)) p[min,max]=[\(fmt(rMin)),\(fmt(rMax))] keep=\(rKeep))"
+        )
+    }
+    #endif
 
     private static func computeFaceROI(faceBBox: CGRect, paddingX: CGFloat, paddingY: CGFloat) -> CGRect {
         let dx = faceBBox.width * paddingX

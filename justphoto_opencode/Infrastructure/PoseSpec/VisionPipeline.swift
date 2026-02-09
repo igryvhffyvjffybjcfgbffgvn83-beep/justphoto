@@ -10,6 +10,14 @@ struct VisionLandmark: Sendable {
     // PoseSpec canonical space: portrait-normalized, Y-Down (origin top-left).
     let pPortrait: CGPoint
     let confidence: Float
+
+    // M6 Phase B2: Vision per-landmark precision estimates.
+    // Only populated for face landmarks (e.g. eyes); nil for pose joints.
+    let precisionEstimatesPerPoint: [Float]?
+
+    var precisionEstimate0: Float? {
+        precisionEstimatesPerPoint?.first
+    }
 }
 
 struct VisionPoseResult: Sendable {
@@ -85,7 +93,7 @@ actor VisionPipeline {
             let jointName = String(describing: jointKey)
             let key = "body." + jointName
             let p = PoseSpecCoordinateNormalizer.normalize(rp.location, sourceOrientation: orientation)
-            out[key] = VisionLandmark(pPortrait: p, confidence: rp.confidence)
+            out[key] = VisionLandmark(pPortrait: p, confidence: rp.confidence, precisionEstimatesPerPoint: nil)
         }
 
         // Minimal required keys for later steps.
@@ -117,13 +125,17 @@ actor VisionPipeline {
         let bboxImage = face.boundingBox
         let bboxPortrait = PoseSpecCoordinateNormalizer.normalizeRect(bboxImage, sourceOrientation: orientation)
 
-        let c = face.confidence
+        let faceConf = face.confidence
 
         // VNFaceLandmarks2D points are normalized in the face bounding box coordinate space.
         // Convert them to image-normalized coordinates before applying portrait normalization.
-        let lEyeLocal = Self.centerAndOpenness(of: landmarks.leftEye)
-        let rEyeLocal = Self.centerAndOpenness(of: landmarks.rightEye)
-        let noseLocal = Self.centerAndOpenness(of: landmarks.nose)
+        let lEyeLocal = Self.center(of: landmarks.leftEye)
+        let rEyeLocal = Self.center(of: landmarks.rightEye)
+        let noseLocal = Self.center(of: landmarks.nose)
+
+        // M6 Phase B2: Use Vision precision estimates for eye landmark filtering.
+        let lEyePrecisions = Self.precisionEstimates(of: landmarks.leftEye)
+        let rEyePrecisions = Self.precisionEstimates(of: landmarks.rightEye)
 
         func toImageNormalized(_ local: CGPoint) -> CGPoint {
             CGPoint(
@@ -132,32 +144,21 @@ actor VisionPipeline {
             )
         }
 
-        func mkImagePoint(_ pImage: CGPoint?, confidence: Float) -> VisionLandmark? {
+        func mkImagePoint(_ pImage: CGPoint?, confidence: Float, precisions: [Float]?) -> VisionLandmark? {
             guard let pImage else { return nil }
             let pp = PoseSpecCoordinateNormalizer.normalize(pImage, sourceOrientation: orientation)
-            return VisionLandmark(pPortrait: pp, confidence: confidence)
+            return VisionLandmark(pPortrait: pp, confidence: confidence, precisionEstimatesPerPoint: precisions)
         }
 
-        // Eye-closed heuristic: if eye landmark is present but vertically collapsed, treat as unavailable.
-        let eyeOpenThreshold: CGFloat = 0.12
-
-        let lEye: VisionLandmark?
-        if let lp = lEyeLocal.center, let openness = lEyeLocal.openness, openness >= eyeOpenThreshold {
-            lEye = mkImagePoint(toImageNormalized(lp), confidence: c)
-        } else {
-            lEye = nil
-        }
-
-        let rEye: VisionLandmark?
-        if let rp = rEyeLocal.center, let openness = rEyeLocal.openness, openness >= eyeOpenThreshold {
-            rEye = mkImagePoint(toImageNormalized(rp), confidence: c)
-        } else {
-            rEye = nil
-        }
+        // Phase B2: VNFaceObservation provides a single face confidence, not per-landmark.
+        // Using faceConf as an eye landmark confidence is too aggressive and can incorrectly drop eye ROIs.
+        // We rely on precision estimates to decide if an individual eye is trustworthy.
+        let lEye: VisionLandmark? = mkImagePoint(lEyeLocal.map(toImageNormalized), confidence: 1.0, precisions: lEyePrecisions)
+        let rEye: VisionLandmark? = mkImagePoint(rEyeLocal.map(toImageNormalized), confidence: 1.0, precisions: rEyePrecisions)
 
         let n: VisionLandmark? = {
-            if let np = noseLocal.center {
-                return mkImagePoint(toImageNormalized(np), confidence: c)
+            if let np = noseLocal {
+                return mkImagePoint(toImageNormalized(np), confidence: faceConf, precisions: nil)
             }
             return nil
         }()
@@ -172,50 +173,36 @@ actor VisionPipeline {
             leftEyeCenter: lEye,
             rightEyeCenter: rEye,
             noseCenter: n,
-            faceConfidence: c
+            faceConfidence: faceConf
         )
     }
 
-    private struct RegionSummary {
-        let center: CGPoint?
-        // Vertical span / horizontal span; smaller => more closed.
-        let openness: CGFloat?
-    }
-
-    private static func centerAndOpenness(of region: VNFaceLandmarkRegion2D?) -> RegionSummary {
-        guard let region else { return RegionSummary(center: nil, openness: nil) }
+    private static func center(of region: VNFaceLandmarkRegion2D?) -> CGPoint? {
+        guard let region else { return nil }
         let pts = region.normalizedPoints
-        guard !pts.isEmpty else { return RegionSummary(center: nil, openness: nil) }
+        guard !pts.isEmpty else { return nil }
 
         var sx: CGFloat = 0
         var sy: CGFloat = 0
-        var minX: CGFloat = .greatestFiniteMagnitude
-        var maxX: CGFloat = -.greatestFiniteMagnitude
-        var minY: CGFloat = .greatestFiniteMagnitude
-        var maxY: CGFloat = -.greatestFiniteMagnitude
-
         for p in pts {
             sx += p.x
             sy += p.y
-            minX = min(minX, p.x)
-            maxX = max(maxX, p.x)
-            minY = min(minY, p.y)
-            maxY = max(maxY, p.y)
         }
 
         let cx = sx / CGFloat(pts.count)
         let cy = sy / CGFloat(pts.count)
 
-        let w = max(0, maxX - minX)
-        let h = max(0, maxY - minY)
-        let openness: CGFloat?
-        if w <= 0.0001 {
-            openness = nil
-        } else {
-            openness = h / w
-        }
+        return CGPoint(x: cx, y: cy)
+    }
 
-        return RegionSummary(center: CGPoint(x: cx, y: cy), openness: openness)
+    private static func precisionEstimates(of region: VNFaceLandmarkRegion2D?) -> [Float]? {
+        guard let region else { return nil }
+
+        // Vision reports per-point precision as NSNumber values.
+        guard let estimates = region.precisionEstimatesPerPoint as? [NSNumber], !estimates.isEmpty else {
+            return nil
+        }
+        return estimates.map { $0.floatValue }
     }
 
     // M6.8: Coordinate normalization is centralized in PoseSpecCoordinateNormalizer.
