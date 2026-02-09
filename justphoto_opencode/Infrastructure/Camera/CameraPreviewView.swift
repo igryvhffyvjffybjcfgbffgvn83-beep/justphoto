@@ -76,10 +76,14 @@ final class PreviewUIView: UIView {
         }
         bgLayer.path = bgPath.cgPath
 
-        if let eye = rois.eyeROI {
-            eyeLayer.path = UIBezierPath(rect: convertPortraitNormalizedToLayerRect(eye)).cgPath
-        } else {
+        if rois.eyeROIs.isEmpty {
             eyeLayer.path = nil
+        } else {
+            let eyePath = UIBezierPath()
+            for eye in rois.eyeROIs {
+                eyePath.append(UIBezierPath(rect: convertPortraitNormalizedToLayerRect(eye)))
+            }
+            eyeLayer.path = eyePath.cgPath
         }
     }
 

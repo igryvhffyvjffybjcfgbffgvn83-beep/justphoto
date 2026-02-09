@@ -5,7 +5,7 @@ import CoreGraphics
 
 struct ROISet: Sendable {
     let faceROI: CGRect
-    let eyeROI: CGRect?
+    let eyeROIs: [CGRect]
     let bgRingRects: [CGRect]
 }
 
@@ -14,40 +14,63 @@ enum ROIComputer {
         guard let face else { return nil }
         let rules = PoseSpecROIRulesCache.shared.rules
 
-        let faceROI = computeFaceROI(faceBBox: face.faceBBoxPortrait, paddingX: rules.facePadX, paddingY: rules.facePadY)
+        let unit = CGRect(x: 0, y: 0, width: 1, height: 1)
 
-        let eyeROI: CGRect?
-        if let l = face.leftEyeCenter,
-           let r = face.rightEyeCenter,
-           l.confidence >= rules.minLandmarkConfidence,
-           r.confidence >= rules.minLandmarkConfidence
-        {
-            eyeROI = computeEyeROI(leftEye: l.pPortrait, rightEye: r.pPortrait, wCoeff: rules.eyeWCoeff, hCoeff: rules.eyeHCoeff)
-        } else {
-            eyeROI = nil
+        // Phase B1: Last-line-of-defense clamp before returning any ROI (prevents out-of-bounds crop crashes).
+        let faceROI = clampToUnit(computeFaceROI(faceBBox: face.faceBBoxPortrait, paddingX: rules.facePadX, paddingY: rules.facePadY), unit: unit)
+        if faceROI.isNull || faceROI.isEmpty {
+            return nil
         }
 
-        let bg = computeBgRingRects(frame: CGRect(x: 0, y: 0, width: 1, height: 1), minus: faceROI)
-        return ROISet(faceROI: faceROI, eyeROI: eyeROI, bgRingRects: bg)
+        // Phase B1: Fix "one-eye" geometry/iteration bug by explicitly computing left/right eye ROIs.
+        // We intentionally do not do confidence filtering in this phase.
+        let d: CGFloat = {
+            if let l = face.leftEyeCenter?.pPortrait, let r = face.rightEyeCenter?.pPortrait {
+                let dx = l.x - r.x
+                let dy = l.y - r.y
+                return max(0, sqrt(dx * dx + dy * dy))
+            }
+            // Fallback scale if only one eye is available.
+            return max(0.0001, max(face.faceBBoxPortrait.width, face.faceBBoxPortrait.height) * 0.25)
+        }()
+
+        var eyeROIs: [CGRect] = []
+        let perEyeW = rules.eyeWCoeff * 0.5
+        let perEyeH = rules.eyeHCoeff * 0.5
+
+        if let leftEye = face.leftEyeCenter {
+            let raw = computeEyeROI(eyeCenter: leftEye.pPortrait, scale: d, wCoeff: perEyeW, hCoeff: perEyeH)
+            let clamped = clampToUnit(raw, unit: unit)
+            if !clamped.isNull && !clamped.isEmpty {
+                eyeROIs.append(clamped)
+            }
+        }
+        if let rightEye = face.rightEyeCenter {
+            let raw = computeEyeROI(eyeCenter: rightEye.pPortrait, scale: d, wCoeff: perEyeW, hCoeff: perEyeH)
+            let clamped = clampToUnit(raw, unit: unit)
+            if !clamped.isNull && !clamped.isEmpty {
+                eyeROIs.append(clamped)
+            }
+        }
+
+        let bg = computeBgRingRects(frame: unit, minus: faceROI)
+            .map { clampToUnit($0, unit: unit) }
+            .filter { !$0.isNull && !$0.isEmpty && $0.width > 0.0001 && $0.height > 0.0001 }
+
+        return ROISet(faceROI: faceROI, eyeROIs: eyeROIs, bgRingRects: bg)
     }
 
     private static func computeFaceROI(faceBBox: CGRect, paddingX: CGFloat, paddingY: CGFloat) -> CGRect {
         let dx = faceBBox.width * paddingX
         let dy = faceBBox.height * paddingY
         let expanded = faceBBox.insetBy(dx: -dx, dy: -dy)
-        return clamp01(expanded)
+        return expanded
     }
 
-    private static func computeEyeROI(leftEye: CGPoint, rightEye: CGPoint, wCoeff: CGFloat, hCoeff: CGFloat) -> CGRect {
-        let mid = CGPoint(x: (leftEye.x + rightEye.x) / 2.0, y: (leftEye.y + rightEye.y) / 2.0)
-        let dx = leftEye.x - rightEye.x
-        let dy = leftEye.y - rightEye.y
-        let d = max(0, sqrt(dx * dx + dy * dy))
-
-        let w = wCoeff * d
-        let h = hCoeff * d
-        let rect = CGRect(x: mid.x - w / 2.0, y: mid.y - h / 2.0, width: w, height: h)
-        return clamp01(rect)
+    private static func computeEyeROI(eyeCenter: CGPoint, scale: CGFloat, wCoeff: CGFloat, hCoeff: CGFloat) -> CGRect {
+        let w = max(0, wCoeff * scale)
+        let h = max(0, hCoeff * scale)
+        return CGRect(x: eyeCenter.x - w / 2.0, y: eyeCenter.y - h / 2.0, width: w, height: h)
     }
 
     private static func computeBgRingRects(frame: CGRect, minus roi: CGRect) -> [CGRect] {
@@ -66,19 +89,34 @@ enum ROIComputer {
             .filter { !$0.isNull && !$0.isEmpty && $0.width > 0.0001 && $0.height > 0.0001 }
     }
 
-    private static func clamp01(_ r: CGRect) -> CGRect {
-        clamp(CGRect(x: 0, y: 0, width: 1, height: 1), r)
+    private static func clampToUnit(_ r: CGRect, unit: CGRect) -> CGRect {
+        guard let s = sanitize(r) else { return .null }
+        let inter = s.intersection(unit)
+        if inter.isNull || inter.isEmpty {
+            return .null
+        }
+        return inter
     }
 
     private static func clamp(_ bounds: CGRect, _ r: CGRect) -> CGRect {
-        let x0 = max(bounds.minX, r.minX)
-        let y0 = max(bounds.minY, r.minY)
-        let x1 = min(bounds.maxX, r.maxX)
-        let y1 = min(bounds.maxY, r.maxY)
-        if x1 <= x0 || y1 <= y0 {
+        guard let rr = sanitize(r) else { return .null }
+        let inter = bounds.standardized.intersection(rr)
+        if inter.isNull || inter.isEmpty {
             return .null
         }
-        return CGRect(x: x0, y: y0, width: x1 - x0, height: y1 - y0)
+        return inter
+    }
+
+    private static func sanitize(_ r: CGRect) -> CGRect? {
+        let s = r.standardized
+        guard s.origin.x.isFinite,
+              s.origin.y.isFinite,
+              s.size.width.isFinite,
+              s.size.height.isFinite
+        else {
+            return nil
+        }
+        return s
     }
 }
 

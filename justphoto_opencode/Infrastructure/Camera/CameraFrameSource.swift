@@ -151,15 +151,21 @@ extension CameraFrameSource: AVCaptureVideoDataOutputSampleBufferDelegate {
         let cgOrientation: CGImagePropertyOrientation
         switch cachedInterfaceOrientation {
         case .portrait:
-            cgOrientation = isFrontCamera ? .upMirrored : .up
+            // AVCaptureVideoDataOutput pixel buffers are typically delivered in the camera sensor
+            // orientation (landscape). For Vision, we must provide the EXIF orientation that
+            // describes how to rotate the buffer into the UI's portrait-up space.
+            // NOTE: Empirically, our pipeline expects the opposite 90deg for this device class;
+            // using `.right` here results in a 180deg error after normalization (bottom-right -> top-left).
+            // So we use `.left` for back camera portrait.
+            cgOrientation = isFrontCamera ? .rightMirrored : .left
         case .portraitUpsideDown:
-            cgOrientation = isFrontCamera ? .downMirrored : .down
+            cgOrientation = isFrontCamera ? .leftMirrored : .right
         case .landscapeLeft:
-            cgOrientation = isFrontCamera ? .rightMirrored : .right
+            cgOrientation = isFrontCamera ? .downMirrored : .down
         case .landscapeRight:
-            cgOrientation = isFrontCamera ? .leftMirrored : .left
-        default:
             cgOrientation = isFrontCamera ? .upMirrored : .up
+        default:
+            cgOrientation = isFrontCamera ? .rightMirrored : .left
         }
         #else
         let cgOrientation: CGImagePropertyOrientation = isFrontCamera ? .upMirrored : .up
