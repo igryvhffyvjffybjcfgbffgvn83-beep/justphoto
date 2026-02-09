@@ -14,10 +14,10 @@ enum PoseSpecLoaderError: Error, LocalizedError {
     }
 }
 
-struct PoseSpecHeader: Decodable, Sendable {
-    let name: String?
-    let schemaVersion: String?
-    let generatedAt: String?
+struct PoseSpecHeader: Sendable {
+    let name: String
+    let schemaVersion: String
+    let generatedAt: String
     let prdVersion: String
 }
 
@@ -26,13 +26,23 @@ final class PoseSpecLoader {
     static let shared = PoseSpecLoader()
     private init() {}
 
-    func loadHeader(bundle: Bundle = .main) throws -> PoseSpecHeader {
-        let data = try loadData(bundle: bundle, applyDebugPatch: false)
+    func loadPoseSpec(bundle: Bundle = .main, applyDebugPatch: Bool = true) throws -> PoseSpec {
+        let data = try loadData(bundle: bundle, applyDebugPatch: applyDebugPatch)
         do {
-            return try JSONDecoder().decode(PoseSpecHeader.self, from: data)
+            return try JSONDecoder().decode(PoseSpec.self, from: data)
         } catch {
             throw PoseSpecLoaderError.invalidJSON
         }
+    }
+
+    func loadHeader(bundle: Bundle = .main) throws -> PoseSpecHeader {
+        let spec = try loadPoseSpec(bundle: bundle, applyDebugPatch: false)
+        return PoseSpecHeader(
+            name: spec.name,
+            schemaVersion: spec.schemaVersion,
+            generatedAt: spec.generatedAt,
+            prdVersion: spec.prdVersion
+        )
     }
 
     func loadData(bundle: Bundle = .main, applyDebugPatch: Bool = true) throws -> Data {
@@ -46,56 +56,63 @@ final class PoseSpecLoader {
             return raw
         }
 
-        if PoseSpecDebugSettings.consumeUseMissingEyeROIOnce() {
-            if var obj = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any],
-               var rois = obj["rois"] as? [String: Any]
-            {
-                rois.removeValue(forKey: "eyeROI")
-                obj["rois"] = rois
-                if let broken = try? JSONSerialization.data(withJSONObject: obj) {
-                    print("PoseSpecDebug: using missing eyeROI once")
-                    return broken
-                }
-            }
-        }
-
-        if PoseSpecDebugSettings.consumeUseMissingAliasOnce() {
-            if var obj = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any],
-               var binding = obj["binding"] as? [String: Any],
-               var aliases = binding["aliases"] as? [String: Any]
-            {
-                aliases.removeValue(forKey: "lShoulder")
-                binding["aliases"] = aliases
-                obj["binding"] = binding
-                if let broken = try? JSONSerialization.data(withJSONObject: obj) {
-                    print("PoseSpecDebug: using missing alias once")
-                    return broken
-                }
-            }
-        }
-
-        if PoseSpecDebugSettings.consumeUseWrongPrdVersionOnce() {
-            if var obj = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any] {
-                obj["prdVersion"] = "v0.0.0"
-                if let broken = try? JSONSerialization.data(withJSONObject: obj) {
-                    print("PoseSpecDebug: using wrong prdVersion once")
-                    return broken
-                }
-            }
-        }
-
-        if PoseSpecDebugSettings.consumeUseBrokenPoseSpecOnce() {
-            // Deliberately break required fields for M6.3 validation verify.
-            if var obj = (try? JSONSerialization.jsonObject(with: raw)) as? [String: Any] {
-                obj.removeValue(forKey: "binding")
-                if let broken = try? JSONSerialization.data(withJSONObject: obj) {
-                    print("PoseSpecDebug: using broken PoseSpec once")
-                    return broken
-                }
-            }
+        if let patched = debugPatchedPoseSpecData(raw: raw) {
+            return patched
         }
 #endif
 
         return raw
     }
+
+#if DEBUG
+    private func debugPatchedPoseSpecData(raw: Data) -> Data? {
+        let anyPatch =
+            PoseSpecDebugSettings.debugIsMissingEyeROIArmed() ||
+            PoseSpecDebugSettings.debugIsMissingAliasArmed() ||
+            PoseSpecDebugSettings.debugIsWrongPrdArmed() ||
+            PoseSpecDebugSettings.debugIsBrokenPoseSpecArmed()
+
+        guard anyPatch else { return nil }
+
+        guard var root = (try? JSONDecoder().decode([String: JSONValue].self, from: raw)) else {
+            return nil
+        }
+
+        if PoseSpecDebugSettings.consumeUseMissingEyeROIOnce() {
+            if case .object(var rois) = root["rois"] {
+                rois.removeValue(forKey: "eyeROI")
+                root["rois"] = .object(rois)
+                print("PoseSpecDebug: using missing eyeROI once")
+            }
+        }
+
+        if PoseSpecDebugSettings.consumeUseMissingAliasOnce() {
+            if case .object(var binding) = root["binding"],
+               case .object(var aliases) = binding["aliases"]
+            {
+                aliases.removeValue(forKey: "lShoulder")
+                binding["aliases"] = .object(aliases)
+                root["binding"] = .object(binding)
+                print("PoseSpecDebug: using missing alias once")
+            }
+        }
+
+        if PoseSpecDebugSettings.consumeUseWrongPrdVersionOnce() {
+            root["prdVersion"] = .string("v0.0.0")
+            print("PoseSpecDebug: using wrong prdVersion once")
+        }
+
+        if PoseSpecDebugSettings.consumeUseBrokenPoseSpecOnce() {
+            // Deliberately break required fields for M6.3 validation verify.
+            root.removeValue(forKey: "binding")
+            print("PoseSpecDebug: using broken PoseSpec once")
+        }
+
+        let encoder = JSONEncoder()
+        if #available(iOS 11.0, *) {
+            encoder.outputFormatting = [.sortedKeys]
+        }
+        return try? encoder.encode(root)
+    }
+#endif
 }

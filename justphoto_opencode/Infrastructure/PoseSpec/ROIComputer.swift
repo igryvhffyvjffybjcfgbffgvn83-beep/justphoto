@@ -98,41 +98,29 @@ private struct PoseSpecROIRules: Sendable {
             eyeHCoeff: 1.2
         )
 
-        guard let data = try? PoseSpecLoader.shared.loadData() else {
-            return defaults
-        }
-        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+        guard let spec = try? PoseSpecLoader.shared.loadPoseSpec() else {
             return defaults
         }
 
-        var minConf = defaults.minLandmarkConfidence
-        if let defaultsObj = root["defaults"] as? [String: Any],
-           let confidenceObj = defaultsObj["confidence"] as? [String: Any],
-           let n = confidenceObj["minLandmarkConfidence"] as? NSNumber
-        {
-            minConf = n.floatValue
-        }
-
+        var minConf = Float(spec.defaults.confidence.minLandmarkConfidence)
         var facePadX = defaults.facePadX
         var facePadY = defaults.facePadY
+        if let faceROI = spec.rois.faceROI {
+            facePadX = CGFloat(faceROI.paddingPctOfBBox.x)
+            facePadY = CGFloat(faceROI.paddingPctOfBBox.y)
+        }
+
         var eyeW = defaults.eyeWCoeff
         var eyeH = defaults.eyeHCoeff
-
-        if let rois = root["rois"] as? [String: Any] {
-            if let face = rois["faceROI"] as? [String: Any],
-               let pad = face["paddingPctOfBBox"] as? [String: Any]
-            {
-                if let x = pad["x"] as? NSNumber { facePadX = CGFloat(x.doubleValue) }
-                if let y = pad["y"] as? NSNumber { facePadY = CGFloat(y.doubleValue) }
-            }
-
-            if let eye = rois["eyeROI"] as? [String: Any],
-               let sizeRule = eye["sizeRule"] as? [String: Any]
-            {
-                if let w = sizeRule["w"] as? String, let c = parseCoeff(rule: w) { eyeW = c }
-                if let h = sizeRule["h"] as? String, let c = parseCoeff(rule: h) { eyeH = c }
-            }
+        if let eyeROI = spec.rois.eyeROI {
+            if let c = parseCoeff(rule: eyeROI.sizeRule.w) { eyeW = c }
+            if let c = parseCoeff(rule: eyeROI.sizeRule.h) { eyeH = c }
         }
+
+        // If the JSON changes or decoding succeeds with unexpected zeros, keep safe defaults.
+        if minConf <= 0 { minConf = defaults.minLandmarkConfidence }
+        if facePadX < 0 { facePadX = defaults.facePadX }
+        if facePadY < 0 { facePadY = defaults.facePadY }
 
         return PoseSpecROIRules(
             minLandmarkConfidence: minConf,

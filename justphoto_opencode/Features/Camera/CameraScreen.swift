@@ -497,7 +497,7 @@ struct CameraScreen: View {
     }
 
     private func checkPoseSpecOrBlock() {
-        let expectedPrdVersion = "v1.1.4"
+        let expectedPrdVersion = PoseSpec.supportedVersion
 
 #if DEBUG
         print(
@@ -505,12 +505,15 @@ struct CameraScreen: View {
         )
 #endif
         do {
-            let data = try PoseSpecLoader.shared.loadData()
-            try PoseSpecValidator.validateRequiredFields(data: data)
-            try PoseSpecValidator.validatePrdVersion(data: data, expected: expectedPrdVersion)
-            try PoseSpecValidator.validateBindingAliasesMinimalSet(data: data)
-            try PoseSpecValidator.validateRoisDictionary(data: data)
+            let spec = try PoseSpecLoader.shared.loadPoseSpec()
+            try PoseSpecValidator.validateRequiredFields(spec)
+            try PoseSpecValidator.validatePrdVersion(spec)
+            try PoseSpecValidator.validateBindingAliasesMinimalSet(spec)
+            try PoseSpecValidator.validateRoisDictionary(spec)
             poseSpecValid = true
+#if DEBUG
+            print("PoseSpec Loaded & Validated")
+#endif
         } catch {
             poseSpecValid = false
             if let k = promptCenter.modal?.key, k.hasPrefix("posespec_") {

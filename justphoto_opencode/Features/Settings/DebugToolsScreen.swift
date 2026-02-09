@@ -23,8 +23,10 @@ struct DebugToolsScreen: View {
     @State private var showingViewerDebug: Bool = false
 
     var body: some View {
+#if false
         List {
             Section("Debug Tools") {
+                Group {
                 Button("DebugToolsPing") {
                     print("DebugToolsPing")
                 }
@@ -424,6 +426,10 @@ struct DebugToolsScreen: View {
                     }
                 }
 
+                }
+            }
+
+            Section("M4 Tools") {
                 Button("M4.7 ForceShutterTap (bypass UI)") {
                     CaptureCoordinator.shared.shutterTapped()
                     statusText = "M4.7 ForceShutterTap: sent"
@@ -984,6 +990,9 @@ struct DebugToolsScreen: View {
                     }
                 }
 
+            }
+
+            Section("PoseSpec / Diagnostics") {
                 Button("M5.9 ForceFavoriteSyncFailOnce") {
                     Task {
                         await FavoriteSyncer.shared.setDebugForceFailOnce()
@@ -1238,129 +1247,9 @@ struct DebugToolsScreen: View {
                 }
                 .disabled(isRunning)
 
-                Section("A.13 Required Events") {
-                    Button("WriteA13 withref_match_state") {
-                        guard !isRunning else { return }
-                        isRunning = true
-                        statusText = "WriteA13 withref_match_state: running..."
-                        statusIsError = false
+                a13RequiredEventsSection
 
-                        Task {
-                            let result = writeA13_withrefMatchState()
-                            await MainActor.run {
-                                isRunning = false
-                                statusText = result.statusText
-                                statusIsError = !result.ok
-                                alertTitle = result.ok ? "A.13 event written" : "A.13 event failed"
-                                alertMessage = result.alertMessage
-                                showAlert = true
-                            }
-                        }
-                    }
-                    .disabled(isRunning)
-
-                    Button("WriteA13 withref_fallback") {
-                        guard !isRunning else { return }
-                        isRunning = true
-                        statusText = "WriteA13 withref_fallback: running..."
-                        statusIsError = false
-
-                        Task {
-                            let result = writeA13_withrefFallback()
-                            await MainActor.run {
-                                isRunning = false
-                                statusText = result.statusText
-                                statusIsError = !result.ok
-                                alertTitle = result.ok ? "A.13 event written" : "A.13 event failed"
-                                alertMessage = result.alertMessage
-                                showAlert = true
-                            }
-                        }
-                    }
-                    .disabled(isRunning)
-
-                    Button("WriteA13 photo_write_verification") {
-                        guard !isRunning else { return }
-                        isRunning = true
-                        statusText = "WriteA13 photo_write_verification: running..."
-                        statusIsError = false
-
-                        Task {
-                            let result = writeA13_photoWriteVerification()
-                            await MainActor.run {
-                                isRunning = false
-                                statusText = result.statusText
-                                statusIsError = !result.ok
-                                alertTitle = result.ok ? "A.13 event written" : "A.13 event failed"
-                                alertMessage = result.alertMessage
-                                showAlert = true
-                            }
-                        }
-                    }
-                    .disabled(isRunning)
-
-                    Button("WriteA13 phantom_asset_detected") {
-                        guard !isRunning else { return }
-                        isRunning = true
-                        statusText = "WriteA13 phantom_asset_detected: running..."
-                        statusIsError = false
-
-                        Task {
-                            let result = writeA13_phantomAssetDetected()
-                            await MainActor.run {
-                                isRunning = false
-                                statusText = result.statusText
-                                statusIsError = !result.ok
-                                alertTitle = result.ok ? "A.13 event written" : "A.13 event failed"
-                                alertMessage = result.alertMessage
-                                showAlert = true
-                            }
-                        }
-                    }
-                    .disabled(isRunning)
-
-                    Button("WriteA13 odr_auto_retry") {
-                        guard !isRunning else { return }
-                        isRunning = true
-                        statusText = "WriteA13 odr_auto_retry: running..."
-                        statusIsError = false
-
-                        Task {
-                            let result = writeA13_odrAutoRetry()
-                            await MainActor.run {
-                                isRunning = false
-                                statusText = result.statusText
-                                statusIsError = !result.ok
-                                alertTitle = result.ok ? "A.13 event written" : "A.13 event failed"
-                                alertMessage = result.alertMessage
-                                showAlert = true
-                            }
-                        }
-                    }
-                    .disabled(isRunning)
-                }
-
-                Section("M4.29 Phantom Asset Healer") {
-                    Button("Inject + Heal Phantom Asset") {
-                        guard !isRunning else { return }
-                        isRunning = true
-                        statusText = "M4.29 Inject+Heal: running..."
-                        statusIsError = false
-
-                        Task {
-                            let result = await m429_injectAndHealPhantomAsset()
-                            await MainActor.run {
-                                isRunning = false
-                                statusText = result.statusText
-                                statusIsError = !result.ok
-                                alertTitle = result.ok ? "M4.29 ok" : "M4.29 failed"
-                                alertMessage = result.alertMessage
-                                showAlert = true
-                            }
-                        }
-                    }
-                    .disabled(isRunning)
-                }
+                m429PhantomAssetHealerSection
 
                 if !statusText.isEmpty {
                     Text(statusText)
@@ -1383,6 +1272,272 @@ struct DebugToolsScreen: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(alertMessage)
+        }
+#else
+        List {
+            Section("PoseSpec") {
+                Button("PrintPoseSpecPrdVersion") {
+                    do {
+                        let spec = try PoseSpecLoader.shared.loadPoseSpec()
+                        print("PoseSpecPrdVersion:\(spec.prdVersion)")
+
+                        statusText = "PoseSpec\n\nprdVersion=\(spec.prdVersion)\nexpected=\(PoseSpec.supportedVersion)"
+                        statusIsError = false
+                        alertTitle = "PoseSpec"
+                        alertMessage = "prdVersion=\(spec.prdVersion)"
+                        showAlert = true
+                    } catch {
+                        print("PoseSpecPrdVersionFAILED: \(error)")
+                        statusText = "PoseSpec: FAILED\n\n\(error.localizedDescription)"
+                        statusIsError = true
+                        alertTitle = "PoseSpec failed"
+                        alertMessage = error.localizedDescription
+                        showAlert = true
+                    }
+                }
+
+                Button("M6.3 ArmBrokenPoseSpecOnce") {
+                    PoseSpecDebugSettings.armUseBrokenPoseSpecOnce()
+                    print("PoseSpecDebug: armed broken PoseSpec once")
+                    statusText = "M6.3 ArmBrokenPoseSpecOnce: armed\n\nRelaunch app to trigger validation"
+                    statusIsError = false
+                    alertTitle = "PoseSpec debug"
+                    alertMessage = "armed (broken once)"
+                    showAlert = true
+                }
+
+                Button("M6.4 ArmWrongPrdVersionOnce") {
+                    PoseSpecDebugSettings.armUseWrongPrdVersionOnce()
+                    print("PoseSpecDebug: armed wrong prdVersion once")
+                    statusText = "M6.4 ArmWrongPrdVersionOnce: armed\n\nRelaunch app to trigger validation"
+                    statusIsError = false
+                    alertTitle = "PoseSpec debug"
+                    alertMessage = "armed (wrong prdVersion once)"
+                    showAlert = true
+                }
+
+                Button("M6.5 ArmMissingAliasOnce") {
+                    PoseSpecDebugSettings.armUseMissingAliasOnce()
+                    print("PoseSpecDebug: armed missing alias once")
+                    statusText = "M6.5 ArmMissingAliasOnce: armed\n\nRelaunch app to trigger validation"
+                    statusIsError = false
+                    alertTitle = "PoseSpec debug"
+                    alertMessage = "armed (missing alias once)"
+                    showAlert = true
+                }
+
+                Button("M6.6 ArmMissingEyeROIOnce") {
+                    PoseSpecDebugSettings.armUseMissingEyeROIOnce()
+                    print("PoseSpecDebug: armed missing eyeROI once")
+                    statusText = "M6.6 ArmMissingEyeROIOnce: armed\n\nRelaunch app to trigger validation"
+                    statusIsError = false
+                    alertTitle = "PoseSpec debug"
+                    alertMessage = "armed (missing eyeROI once)"
+                    showAlert = true
+                }
+
+                Button("M6.7 PrintPortraitNormalization") {
+                    #if canImport(UIKit)
+                    let io = PoseSpecOrientation.currentInterfaceOrientation()
+                    #else
+                    let io: Any? = nil
+                    #endif
+
+                    let back = PoseSpecOrientation.cgImageOrientation(interface: io as Any, isFrontCamera: false)
+                    let front = PoseSpecOrientation.cgImageOrientation(interface: io as Any, isFrontCamera: true)
+                    let p = CGPoint(x: 0.2, y: 0.3)
+
+                    let backOut = PoseSpecCoordinateNormalizer.toPortraitNormalized(p, sourceOrientation: back)
+                    let frontOut = PoseSpecCoordinateNormalizer.toPortraitNormalized(p, sourceOrientation: front)
+
+                    print("PoseSpecNormalize: normalizedSpace=portrait")
+                    print("PoseSpecNormalize: interface=\(String(describing: io))")
+                    print("PoseSpecNormalize: sample_in=\(p) back_orient=\(back.rawValue) out=\(backOut)")
+                    print("PoseSpecNormalize: sample_in=\(p) front_orient=\(front.rawValue) out=\(frontOut)")
+
+                    statusText = "M6.7 portrait normalized\n\ninterface=\(String(describing: io))\nback=\(back.rawValue) out=\(backOut)\nfront=\(front.rawValue) out=\(frontOut)"
+                    statusIsError = false
+                    alertTitle = "M6.7"
+                    alertMessage = "normalizedSpace=portrait"
+                    showAlert = true
+                }
+            }
+
+            Section("Diagnostics") {
+                Button {
+                    guard !isRunning else { return }
+                    isRunning = true
+                    statusText = "WriteTestDiagnostic: running..."
+                    statusIsError = false
+                    print("WriteTestDiagnosticTapped")
+
+                    Task {
+                        let result = writeTestDiagnostic()
+                        await MainActor.run {
+                            isRunning = false
+                            statusText = result.statusText
+                            statusIsError = !result.ok
+                            alertTitle = result.ok ? "Diagnostic generated" : "Diagnostic failed"
+                            alertMessage = result.alertMessage
+                            showAlert = true
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Text("WriteTestDiagnostic")
+                        Spacer()
+                        if isRunning {
+                            ProgressView()
+                        }
+                    }
+                }
+                .disabled(isRunning)
+            }
+
+            if !statusText.isEmpty {
+                Text(statusText)
+                    .font(.footnote)
+                    .foregroundStyle(statusIsError ? .red : .secondary)
+                    .textSelection(.enabled)
+            }
+        }
+        .navigationTitle("Debug Tools")
+        .promptHost()
+        .alert(alertTitle, isPresented: $showAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(alertMessage)
+        }
+#endif
+    }
+
+    @ViewBuilder
+    private var a13RequiredEventsSection: some View {
+        Section("A.13 Required Events") {
+            Button("WriteA13 withref_match_state") {
+                guard !isRunning else { return }
+                isRunning = true
+                statusText = "WriteA13 withref_match_state: running..."
+                statusIsError = false
+
+                Task {
+                    let result = writeA13_withrefMatchState()
+                    await MainActor.run {
+                        isRunning = false
+                        statusText = result.statusText
+                        statusIsError = !result.ok
+                        alertTitle = result.ok ? "A.13 event written" : "A.13 event failed"
+                        alertMessage = result.alertMessage
+                        showAlert = true
+                    }
+                }
+            }
+            .disabled(isRunning)
+
+            Button("WriteA13 withref_fallback") {
+                guard !isRunning else { return }
+                isRunning = true
+                statusText = "WriteA13 withref_fallback: running..."
+                statusIsError = false
+
+                Task {
+                    let result = writeA13_withrefFallback()
+                    await MainActor.run {
+                        isRunning = false
+                        statusText = result.statusText
+                        statusIsError = !result.ok
+                        alertTitle = result.ok ? "A.13 event written" : "A.13 event failed"
+                        alertMessage = result.alertMessage
+                        showAlert = true
+                    }
+                }
+            }
+            .disabled(isRunning)
+
+            Button("WriteA13 photo_write_verification") {
+                guard !isRunning else { return }
+                isRunning = true
+                statusText = "WriteA13 photo_write_verification: running..."
+                statusIsError = false
+
+                Task {
+                    let result = writeA13_photoWriteVerification()
+                    await MainActor.run {
+                        isRunning = false
+                        statusText = result.statusText
+                        statusIsError = !result.ok
+                        alertTitle = result.ok ? "A.13 event written" : "A.13 event failed"
+                        alertMessage = result.alertMessage
+                        showAlert = true
+                    }
+                }
+            }
+            .disabled(isRunning)
+
+            Button("WriteA13 phantom_asset_detected") {
+                guard !isRunning else { return }
+                isRunning = true
+                statusText = "WriteA13 phantom_asset_detected: running..."
+                statusIsError = false
+
+                Task {
+                    let result = writeA13_phantomAssetDetected()
+                    await MainActor.run {
+                        isRunning = false
+                        statusText = result.statusText
+                        statusIsError = !result.ok
+                        alertTitle = result.ok ? "A.13 event written" : "A.13 event failed"
+                        alertMessage = result.alertMessage
+                        showAlert = true
+                    }
+                }
+            }
+            .disabled(isRunning)
+
+            Button("WriteA13 odr_auto_retry") {
+                guard !isRunning else { return }
+                isRunning = true
+                statusText = "WriteA13 odr_auto_retry: running..."
+                statusIsError = false
+
+                Task {
+                    let result = writeA13_odrAutoRetry()
+                    await MainActor.run {
+                        isRunning = false
+                        statusText = result.statusText
+                        statusIsError = !result.ok
+                        alertTitle = result.ok ? "A.13 event written" : "A.13 event failed"
+                        alertMessage = result.alertMessage
+                        showAlert = true
+                    }
+                }
+            }
+            .disabled(isRunning)
+        }
+    }
+
+    @ViewBuilder
+    private var m429PhantomAssetHealerSection: some View {
+        Section("M4.29 Phantom Asset Healer") {
+            Button("Inject + Heal Phantom Asset") {
+                guard !isRunning else { return }
+                isRunning = true
+                statusText = "M4.29 Inject+Heal: running..."
+                statusIsError = false
+
+                Task {
+                    let result = await m429_injectAndHealPhantomAsset()
+                    await MainActor.run {
+                        isRunning = false
+                        statusText = result.statusText
+                        statusIsError = !result.ok
+                        alertTitle = result.ok ? "M4.29 ok" : "M4.29 failed"
+                        alertMessage = result.alertMessage
+                        showAlert = true
+                    }
+                }
+            }
+            .disabled(isRunning)
         }
     }
 
