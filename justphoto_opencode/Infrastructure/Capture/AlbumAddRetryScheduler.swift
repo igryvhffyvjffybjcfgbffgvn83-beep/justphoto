@@ -46,7 +46,7 @@ actor AlbumAddRetryScheduler {
         }
 
         let delayMs = max(Int64(0), (nextAtMs ?? nowMs) - nowMs)
-        print("AlbumAutoRetryScheduled: item_id=\(itemId) retry_count=\(candidate.retryCount) delay_ms=\(delayMs)")
+        JPDebugPrint("AlbumAutoRetryScheduled: item_id=\(itemId) retry_count=\(candidate.retryCount) delay_ms=\(delayMs)")
 
         tasks[itemId] = Task {
             try? await Task.sleep(nanoseconds: UInt64(delayMs) * 1_000_000)
@@ -73,32 +73,32 @@ actor AlbumAddRetryScheduler {
             do {
                 try SessionRepository.shared.beginAlbumAutoRetryAttempt(itemId: itemId, now: Date())
             } catch {
-                print("AlbumAutoRetryBeginFAILED: \(error)")
+                JPDebugPrint("AlbumAutoRetryBeginFAILED: \(error)")
             }
         }
 
-        print("AlbumAutoRetryAttempt: item_id=\(itemId) retry_count=\(expectedRetryCount)")
+        JPDebugPrint("AlbumAutoRetryAttempt: item_id=\(itemId) retry_count=\(expectedRetryCount)")
 
         do {
             _ = try await AlbumArchiver.shared.archive(assetLocalIdentifier: assetId)
-            print("AlbumAutoRetrySuccess: item_id=\(itemId)")
+            JPDebugPrint("AlbumAutoRetrySuccess: item_id=\(itemId)")
             await MainActor.run {
                 do {
                     try SessionRepository.shared.markAlbumAddSuccess(itemId: itemId)
                 } catch {
-                    print("AlbumAutoRetryMarkSuccessFAILED: \(error)")
+                    JPDebugPrint("AlbumAutoRetryMarkSuccessFAILED: \(error)")
                 }
             }
         } catch {
             if case AlbumArchiverError.assetNotFound = error {
                 // Phantom/missing asset: heal locally and stop retrying.
                 if let report = await PhantomAssetHealer.shared.healIfNeeded(itemId: itemId, assetId: assetId, source: "album_auto_retry") {
-                    print("AlbumAutoRetryHealedPhantom: item_id=\(itemId) action=\(report.healAction.rawValue)")
+                    JPDebugPrint("AlbumAutoRetryHealedPhantom: item_id=\(itemId) action=\(report.healAction.rawValue)")
                     return
                 }
             }
 
-            print("AlbumAutoRetryFAILED: item_id=\(itemId) error=\(error)")
+            JPDebugPrint("AlbumAutoRetryFAILED: item_id=\(itemId) error=\(error)")
 
             let nextDelayMs = backoffDelayMs(retryCount: expectedRetryCount + 1)
             await MainActor.run {
@@ -109,7 +109,7 @@ actor AlbumAddRetryScheduler {
                         nextDelayMs: (expectedRetryCount + 1) < maxAttempts ? nextDelayMs : nil
                     )
                 } catch {
-                    print("AlbumAutoRetryBumpFAILED: \(error)")
+                    JPDebugPrint("AlbumAutoRetryBumpFAILED: \(error)")
                 }
             }
 

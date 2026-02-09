@@ -1,5 +1,4 @@
 import CoreGraphics
-import CoreGraphics
 import Foundation
 import ImageIO
 
@@ -14,6 +13,19 @@ import ImageIO
 // This normalizer performs the one-time flip (y = 1 - y) internally so all
 // upper layers only ever see Y-Down.
 enum PoseSpecCoordinateNormalizer {
+    struct Shared: Sendable {
+        func normalize(_ pVision: CGPoint, sourceOrientation: CGImagePropertyOrientation) -> CGPoint {
+            PoseSpecCoordinateNormalizer.normalize(pVision, sourceOrientation: sourceOrientation)
+        }
+
+        func normalizeRect(_ rVision: CGRect, sourceOrientation: CGImagePropertyOrientation) -> CGRect {
+            PoseSpecCoordinateNormalizer.normalizeRect(rVision, sourceOrientation: sourceOrientation)
+        }
+    }
+
+    // M6.10: Instance-style API used by pipelines to prevent ad-hoc coordinate helpers.
+    static let shared = Shared()
+
     /// Normalize a Vision-provided point into PoseSpec canonical space.
     static func normalize(_ pVision: CGPoint, sourceOrientation: CGImagePropertyOrientation) -> CGPoint {
         // Phase B1/B2: Vision is already given the correct EXIF orientation when we call

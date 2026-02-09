@@ -257,7 +257,7 @@ actor DiagnosticsEventWriter {
             let line = try logger.encodeJSONLine(event)
             _ = try logger.appendJSONLine(line)
         } catch {
-            print("DiagnosticsAppendFAILED: \(event.event): \(error)")
+            JPDebugPrint("DiagnosticsAppendFAILED: \(event.event): \(error)")
         }
     }
 

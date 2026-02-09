@@ -119,7 +119,7 @@ struct ViewerScreen: View {
             failedItems = []
             thumbFailedItems = []
             promptCenter.show(makeViewerToast(key: "viewer_refresh_failed", message: "刷新失败"))
-            print("ViewerRefreshFAILED: \(error)")
+            JPDebugPrint("ViewerRefreshFAILED: \(error)")
         }
     }
 

@@ -34,6 +34,7 @@ final class CameraFrameSource: NSObject, ObservableObject {
 
 #if canImport(UIKit)
     private var orientationObserver: NSObjectProtocol? = nil
+    private let interfaceOrientationLock = NSLock()
     nonisolated(unsafe) private var cachedInterfaceOrientation: UIInterfaceOrientation? = nil
 #endif
 
@@ -44,7 +45,7 @@ final class CameraFrameSource: NSObject, ObservableObject {
             try configureIfNeeded()
 
 #if canImport(UIKit)
-            cachedInterfaceOrientation = currentInterfaceOrientation()
+            setCachedInterfaceOrientation(currentInterfaceOrientation())
             if orientationObserver == nil {
                 orientationObserver = NotificationCenter.default.addObserver(
                     forName: UIDevice.orientationDidChangeNotification,
@@ -52,7 +53,7 @@ final class CameraFrameSource: NSObject, ObservableObject {
                     queue: .main
                 ) { [weak self] _ in
                     guard let self else { return }
-                    self.cachedInterfaceOrientation = self.currentInterfaceOrientation()
+                    self.setCachedInterfaceOrientation(self.currentInterfaceOrientation())
                 }
             }
 #endif
@@ -147,9 +148,9 @@ extension CameraFrameSource: AVCaptureVideoDataOutputSampleBufferDelegate {
         }
         lastDeliveredTsMs = tsMs
 
-        #if canImport(UIKit)
+#if canImport(UIKit)
         let cgOrientation: CGImagePropertyOrientation
-        switch cachedInterfaceOrientation {
+        switch getCachedInterfaceOrientation() {
         case .portrait:
             // AVCaptureVideoDataOutput pixel buffers are typically delivered in the camera sensor
             // orientation (landscape). For Vision, we must provide the EXIF orientation that
@@ -177,6 +178,18 @@ extension CameraFrameSource: AVCaptureVideoDataOutputSampleBufferDelegate {
 
 #if canImport(UIKit)
 extension CameraFrameSource {
+    private func getCachedInterfaceOrientation() -> UIInterfaceOrientation? {
+        interfaceOrientationLock.lock()
+        defer { interfaceOrientationLock.unlock() }
+        return cachedInterfaceOrientation
+    }
+
+    private func setCachedInterfaceOrientation(_ v: UIInterfaceOrientation?) {
+        interfaceOrientationLock.lock()
+        defer { interfaceOrientationLock.unlock() }
+        cachedInterfaceOrientation = v
+    }
+
     private func currentInterfaceOrientation() -> UIInterfaceOrientation? {
         let scenes = UIApplication.shared.connectedScenes
         let ws = scenes.compactMap { $0 as? UIWindowScene }

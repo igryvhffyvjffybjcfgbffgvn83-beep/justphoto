@@ -59,9 +59,9 @@ struct DiagnosticsRotationManager: Sendable {
         }
 
         if !deleted.isEmpty {
-            print("RotationBySizeTriggered")
-            print("RotationDeletedFiles: \(deleted)")
-            print("RotationTotalBytesAfter: \(total)")
+            JPDebugPrint("RotationBySizeTriggered")
+            JPDebugPrint("RotationDeletedFiles: \(deleted)")
+            JPDebugPrint("RotationTotalBytesAfter: \(total)")
         }
     }
 
@@ -109,8 +109,8 @@ struct DiagnosticsRotationManager: Sendable {
         }
 
         if !deleted.isEmpty {
-            print("RotationByAgeTriggered")
-            print("RotationByAgeDeletedFiles: \(deleted)")
+            JPDebugPrint("RotationByAgeTriggered")
+            JPDebugPrint("RotationByAgeDeletedFiles: \(deleted)")
         }
     }
 

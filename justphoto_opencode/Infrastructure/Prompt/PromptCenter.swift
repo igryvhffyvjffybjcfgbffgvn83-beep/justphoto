@@ -55,12 +55,12 @@ final class PromptCenter: ObservableObject {
             let key = PromptGateFlagKeys.sessionOnce(promptKey: prompt.key)
             do {
                 if try SessionRepository.shared.sessionFlagBool(key) {
-                    print("PromptGated:\(prompt.key) gate=sessionOnce")
+                    JPDebugPrint("PromptGated:\(prompt.key) gate=sessionOnce")
                     return true
                 }
             } catch {
                 // Prefer showing the prompt over suppressing it if gating fails.
-                print("PromptGateCheckFAILED:\(prompt.key) gate=sessionOnce error=\(error)")
+                JPDebugPrint("PromptGateCheckFAILED:\(prompt.key) gate=sessionOnce error=\(error)")
             }
             return false
         case .none, .installOnce, .stateOnly:
@@ -75,7 +75,7 @@ final class PromptCenter: ObservableObject {
             do {
                 try SessionRepository.shared.setSessionFlagBool(key, value: true)
             } catch {
-                print("PromptGateWriteFAILED:\(prompt.key) gate=sessionOnce error=\(error)")
+                JPDebugPrint("PromptGateWriteFAILED:\(prompt.key) gate=sessionOnce error=\(error)")
             }
         case .none, .installOnce, .stateOnly:
             break
@@ -83,7 +83,7 @@ final class PromptCenter: ObservableObject {
     }
 
     func actionTapped(prompt: Prompt, actionId: String) {
-        print("PromptActionTapped:\(prompt.key) action=\(actionId)")
+        JPDebugPrint("PromptActionTapped:\(prompt.key) action=\(actionId)")
         logPromptActionTapped(prompt, actionId: actionId)
         actionSubject.send(.init(promptKey: prompt.key, actionId: actionId))
 
@@ -102,21 +102,21 @@ final class PromptCenter: ObservableObject {
 
     func dismissModal(reason: DismissReason) {
         guard let existing = modal else { return }
-        print("PromptDismissed:\(existing.key) reason=\(reason.rawValue)")
+        JPDebugPrint("PromptDismissed:\(existing.key) reason=\(reason.rawValue)")
         logPromptDismissed(existing, reason: reason)
         modal = nil
     }
 
     func dismissToast(reason: DismissReason) {
         guard let existing = toast else { return }
-        print("PromptDismissed:\(existing.key) reason=\(reason.rawValue)")
+        JPDebugPrint("PromptDismissed:\(existing.key) reason=\(reason.rawValue)")
         logPromptDismissed(existing, reason: reason)
         toast = nil
     }
 
     func dismissBanner(reason: DismissReason) {
         guard let existing = banner else { return }
-        print("PromptDismissed:\(existing.key) reason=\(reason.rawValue)")
+        JPDebugPrint("PromptDismissed:\(existing.key) reason=\(reason.rawValue)")
         logPromptDismissed(existing, reason: reason)
         banner = nil
     }
@@ -136,13 +136,13 @@ final class PromptCenter: ObservableObject {
             }
         }
 
-        print("PromptIgnored:\(incoming.key) slot=\(slot)")
+        JPDebugPrint("PromptIgnored:\(incoming.key) slot=\(slot)")
         return existing
     }
 
     private func preempt(existing: Prompt, incoming: Prompt) {
-        print("PromptPreempted:\(existing.key)->\(incoming.key)")
-        print("PromptDismissed:\(existing.key) reason=\(DismissReason.preempt.rawValue)")
+        JPDebugPrint("PromptPreempted:\(existing.key)->\(incoming.key)")
+        JPDebugPrint("PromptDismissed:\(existing.key) reason=\(DismissReason.preempt.rawValue)")
         logPromptDismissed(existing, reason: .preempt)
     }
 

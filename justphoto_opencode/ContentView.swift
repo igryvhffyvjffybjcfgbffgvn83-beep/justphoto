@@ -251,7 +251,7 @@ private struct PromptHostOverlay: View {
                             voiceOverEnabled: voiceOver
                         )
 
-                        print(
+                        JPDebugPrint(
                             "PromptAutoDismissScheduled:\(banner.key) kind=banner seconds=\(seconds) voiceOver=\(voiceOver) voiceOver_ui=\(voiceOverUI) voiceOver_env=\(voiceOverEnabled)"
                         )
 
@@ -287,7 +287,7 @@ private struct PromptHostOverlay: View {
                             voiceOverEnabled: voiceOver
                         )
 
-                        print(
+                        JPDebugPrint(
                             "PromptAutoDismissScheduled:\(toast.key) kind=toast seconds=\(seconds) voiceOver=\(voiceOver) voiceOver_ui=\(voiceOverUI) voiceOver_env=\(voiceOverEnabled)"
                         )
 

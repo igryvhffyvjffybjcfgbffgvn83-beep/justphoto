@@ -14,31 +14,31 @@ struct justphoto_opencodeApp: App {
     @StateObject private var promptCenter = PromptCenter()
 
     init() {
-        print("GRDBReady")
+        JPDebugPrint("GRDBReady")
 
         if let url = Bundle.main.url(forResource: "PoseSpec", withExtension: "json") {
             _ = url
-            print("PoseSpecLoadedFromBundle")
+            JPDebugPrint("PoseSpecLoadedFromBundle")
         } else {
-            print("PoseSpecLoadFromBundleFAILED")
+            JPDebugPrint("PoseSpecLoadFromBundleFAILED")
         }
 
         do {
             let result = try DatabaseManager.shared.start()
-            print("DBOpened: \(result.path) existed_before=\(result.existedBefore) exists_after=\(result.existsAfter)")
+            JPDebugPrint("DBOpened: \(result.path) existed_before=\(result.existedBefore) exists_after=\(result.existsAfter)")
 
             if result.newMigrations.isEmpty {
-                print("DBMigrationsUpToDate")
+                JPDebugPrint("DBMigrationsUpToDate")
             } else {
                 for id in result.newMigrations {
-                    print("DBMigrated:\(id)")
+                    JPDebugPrint("DBMigrated:\(id)")
                 }
             }
 
             let session = try SessionRepository.shared.ensureFreshSession(scene: "cafe")
-            print("SessionReady: \(session.sessionId) changed=\(session.changed)")
+            JPDebugPrint("SessionReady: \(session.sessionId) changed=\(session.changed)")
             if let counts = try SessionRepository.shared.currentWorksetCounts() {
-                print("WorksetCounts: session_items=\(counts.sessionItems) ref_items=\(counts.refItems)")
+                JPDebugPrint("WorksetCounts: session_items=\(counts.sessionItems) ref_items=\(counts.refItems)")
             }
 
             // M4.28: retry pending album_add_failed once on next launch.
@@ -46,7 +46,7 @@ struct justphoto_opencodeApp: App {
                 await AlbumAddRetryScheduler.shared.kick()
             }
         } catch {
-            print("DBOpenFAILED: \(error)")
+            JPDebugPrint("DBOpenFAILED: \(error)")
         }
     }
 
@@ -62,7 +62,7 @@ struct justphoto_opencodeApp: App {
                             try SessionRepository.shared.touchCurrentSession()
                             Task { await AlbumAddRetryScheduler.shared.kick() }
                         } catch {
-                            print("SessionEnsureFAILED: \(error)")
+                            JPDebugPrint("SessionEnsureFAILED: \(error)")
                         }
                     case .inactive, .background:
                         DatabaseManager.shared.flush(reason: "scenePhase_\(String(describing: phase))")

@@ -43,18 +43,55 @@ enum ROIComputer {
         // Start with a conservative margin so good eyes stay, occluded/phantom eyes drop.
         let eyePrecisionMaxThreshold: Float = 0.012
 
+        // M6.9.1: Eye open/close gate using landmark bounding-box aspect ratio (height/width).
+        // Typical: open > ~0.30; blink/closed < ~0.20.
+        let eyeAspectRatioMinThreshold: Float = 0.20
+
         #if DEBUG
-        maybePrintEyeDetectiveLog(face: face, minConf: rules.minLandmarkConfidence, precisionThreshold: eyePrecisionMaxThreshold)
+        maybePrintEyeDetectiveLog(
+            face: face,
+            minConf: rules.minLandmarkConfidence,
+            precisionThreshold: eyePrecisionMaxThreshold,
+            eyeAspectRatioMinThreshold: eyeAspectRatioMinThreshold
+        )
         #endif
 
-        if let leftEye = face.leftEyeCenter, shouldKeepEyeLandmark(leftEye, minConf: rules.minLandmarkConfidence, precisionThreshold: eyePrecisionMaxThreshold) {
+        // Force filtering to actually gate ROI emission.
+        let leftEye = face.leftEyeCenter
+        let rightEye = face.rightEyeCenter
+        let keepLeft = leftEye.map {
+            shouldKeepEyeLandmark(
+                $0,
+                minConf: rules.minLandmarkConfidence,
+                precisionThreshold: eyePrecisionMaxThreshold,
+                eyeAspectRatioMinThreshold: eyeAspectRatioMinThreshold
+            )
+        } ?? false
+        let keepRight = rightEye.map {
+            shouldKeepEyeLandmark(
+                $0,
+                minConf: rules.minLandmarkConfidence,
+                precisionThreshold: eyePrecisionMaxThreshold,
+                eyeAspectRatioMinThreshold: eyeAspectRatioMinThreshold
+            )
+        } ?? false
+
+        // When both are invalid, ensure we do not accidentally emit stale eye ROIs.
+        guard keepLeft || keepRight else {
+            let bg = computeBgRingRects(frame: unit, minus: faceROI)
+                .map { clampToUnit($0, unit: unit) }
+                .filter { !$0.isNull && !$0.isEmpty && $0.width > 0.0001 && $0.height > 0.0001 }
+            return ROISet(faceROI: faceROI, eyeROIs: [], bgRingRects: bg)
+        }
+
+        if keepLeft, let leftEye {
             let raw = computeEyeROI(eyeCenter: leftEye.pPortrait, scale: d, wCoeff: perEyeW, hCoeff: perEyeH)
             let clamped = clampToUnit(raw, unit: unit)
             if !clamped.isNull && !clamped.isEmpty {
                 eyeROIs.append(clamped)
             }
         }
-        if let rightEye = face.rightEyeCenter, shouldKeepEyeLandmark(rightEye, minConf: rules.minLandmarkConfidence, precisionThreshold: eyePrecisionMaxThreshold) {
+        if keepRight, let rightEye {
             let raw = computeEyeROI(eyeCenter: rightEye.pPortrait, scale: d, wCoeff: perEyeW, hCoeff: perEyeH)
             let clamped = clampToUnit(raw, unit: unit)
             if !clamped.isNull && !clamped.isEmpty {
@@ -69,24 +106,55 @@ enum ROIComputer {
         return ROISet(faceROI: faceROI, eyeROIs: eyeROIs, bgRingRects: bg)
     }
 
-    private static func shouldKeepEyeLandmark(_ eye: VisionLandmark, minConf: Float, precisionThreshold: Float) -> Bool {
-        if eye.confidence < minConf {
+    private static func shouldKeepEyeLandmark(
+        _ eye: VisionLandmark,
+        minConf: Float,
+        precisionThreshold: Float,
+        eyeAspectRatioMinThreshold: Float
+    ) -> Bool {
+        let hasExplicitConfidence = (eye.confidence != nil)
+
+        if let conf = eye.confidence, conf < minConf {
             return false
         }
 
+        var passedPrecisionGate = false
+
         // Smart filtering: if Vision provides precision estimates, require the worst point to pass the threshold.
-        // If no precision estimate is available, fall back to confidence-only gating.
+        // If no precision estimate is available, require a non-nil confidence signal.
         if let precisions = eye.precisionEstimatesPerPoint, let worst = precisions.max() {
             // Vision precision estimates are "smaller is better" (tighter estimate => higher precision).
-            return worst <= precisionThreshold
+            if worst > precisionThreshold {
+                return false
+            }
+            passedPrecisionGate = true
         }
-        return true
+
+        // M6.9.1: Blinking/closed-eye gate.
+        if let ratio = eye.aspectRatioHeightOverWidth {
+            if ratio < eyeAspectRatioMinThreshold {
+                return false
+            }
+        }
+
+        // If Vision gave us per-point precision and it passed, trust the landmark even if confidence is nil.
+        if passedPrecisionGate {
+            return true
+        }
+
+        // Otherwise, require an explicit confidence signal.
+        return hasExplicitConfidence
     }
 
     #if DEBUG
     private static var lastEyeDetectiveLogTsMs: Int = 0
 
-    private static func maybePrintEyeDetectiveLog(face: VisionFaceResult, minConf: Float, precisionThreshold: Float) {
+    private static func maybePrintEyeDetectiveLog(
+        face: VisionFaceResult,
+        minConf: Float,
+        precisionThreshold: Float,
+        eyeAspectRatioMinThreshold: Float
+    ) {
         // ROIComputer.compute(...) is called frequently from SwiftUI rendering; throttle to avoid console spam.
         guard Thread.isMainThread else { return }
 
@@ -104,19 +172,24 @@ enum ROIComputer {
         let l = face.leftEyeCenter
         let r = face.rightEyeCenter
 
-        let lKeep = l.map { shouldKeepEyeLandmark($0, minConf: minConf, precisionThreshold: precisionThreshold) } ?? false
-        let rKeep = r.map { shouldKeepEyeLandmark($0, minConf: minConf, precisionThreshold: precisionThreshold) } ?? false
+        let lKeep = l.map {
+            shouldKeepEyeLandmark($0, minConf: minConf, precisionThreshold: precisionThreshold, eyeAspectRatioMinThreshold: eyeAspectRatioMinThreshold)
+        } ?? false
+        let rKeep = r.map {
+            shouldKeepEyeLandmark($0, minConf: minConf, precisionThreshold: precisionThreshold, eyeAspectRatioMinThreshold: eyeAspectRatioMinThreshold)
+        } ?? false
 
         let minConfStr = String(format: "%.2f", minConf)
         let precThrStr = String(format: "%.3f", precisionThreshold)
+        let earThrStr = String(format: "%.2f", eyeAspectRatioMinThreshold)
 
         if let leftEye = l {
-            print("DEBUG: Eye Precision - Left: \(leftEye.precisionEstimatesPerPoint ?? []), Confidence: \(leftEye.confidence)")
+            print("DEBUG: Eye Precision - Left: \(leftEye.precisionEstimatesPerPoint ?? []), Confidence: \(fmt(leftEye.confidence))")
         } else {
             print("DEBUG: Eye Precision - Left: [], Confidence: nil")
         }
         if let rightEye = r {
-            print("DEBUG: Eye Precision - Right: \(rightEye.precisionEstimatesPerPoint ?? []), Confidence: \(rightEye.confidence)")
+            print("DEBUG: Eye Precision - Right: \(rightEye.precisionEstimatesPerPoint ?? []), Confidence: \(fmt(rightEye.confidence))")
         } else {
             print("DEBUG: Eye Precision - Right: [], Confidence: nil")
         }
@@ -126,13 +199,19 @@ enum ROIComputer {
             return (mn, mx)
         }
 
+        func earStr(_ v: Float?) -> String {
+            guard let v else { return "nil" }
+            return String(format: "%.2f", v)
+        }
+
         let (lMin, lMax) = minMax(l?.precisionEstimatesPerPoint)
         let (rMin, rMax) = minMax(r?.precisionEstimatesPerPoint)
 
         print(
             "EyeDetective: minConf>=\(minConfStr) precisionMax<=\(precThrStr) " +
-                "left(conf=\(fmt(l?.confidence)) p[min,max]=[\(fmt(lMin)),\(fmt(lMax))] keep=\(lKeep)) " +
-                "right(conf=\(fmt(r?.confidence)) p[min,max]=[\(fmt(rMin)),\(fmt(rMax))] keep=\(rKeep))"
+                "earMin>=\(earThrStr) " +
+                "left(conf=\(fmt(l?.confidence ?? nil)) p[min,max]=[\(fmt(lMin)),\(fmt(lMax))] keep=\(lKeep) (EAR: \(earStr(l?.aspectRatioHeightOverWidth)))) " +
+                "right(conf=\(fmt(r?.confidence ?? nil)) p[min,max]=[\(fmt(rMin)),\(fmt(rMax))] keep=\(rKeep) (EAR: \(earStr(r?.aspectRatioHeightOverWidth))))"
         )
     }
     #endif

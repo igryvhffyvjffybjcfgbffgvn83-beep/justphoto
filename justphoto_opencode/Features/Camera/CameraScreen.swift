@@ -88,7 +88,7 @@ struct CameraScreen: View {
                                     }
                                 }
                             } catch {
-                                print("FilmstripToggleLikeFAILED: item_id=\(item.itemId) error=\(error)")
+                                JPDebugPrint("FilmstripToggleLikeFAILED: item_id=\(item.itemId) error=\(error)")
                             }
                         }
                     )
@@ -237,20 +237,20 @@ struct CameraScreen: View {
             case "camera_permission_preprompt":
                 switch e.actionId {
                 case "continue":
-                    print("CameraPermissionPreprompt: continue")
+                    JPDebugPrint("CameraPermissionPreprompt: continue")
                     cameraPermissionDeclined = false
 
                     let current = CameraAuthMapper.currentVideoAuth()
                     guard current == .not_determined else {
-                        print("CameraPermissionRequestSkipped: current=\(current.rawValue)")
+                        JPDebugPrint("CameraPermissionRequestSkipped: current=\(current.rawValue)")
                         return
                     }
 
                     Task {
-                        print("CameraPermissionRequestStart")
+                        JPDebugPrint("CameraPermissionRequestStart")
                         let granted = await CameraAuthMapper.requestVideoAccess()
                         let after = CameraAuthMapper.currentVideoAuth()
-                        print("CameraPermissionRequestResult: granted=\(granted) after=\(after.rawValue)")
+                        JPDebugPrint("CameraPermissionRequestResult: granted=\(granted) after=\(after.rawValue)")
 
                         await MainActor.run {
                             cameraAuth = after
@@ -259,7 +259,7 @@ struct CameraScreen: View {
                         }
                     }
                 case "cancel":
-                    print("CameraPermissionPreprompt: cancel")
+                    JPDebugPrint("CameraPermissionPreprompt: cancel")
                     cameraPermissionDeclined = true
                 default:
                     break
@@ -278,15 +278,15 @@ struct CameraScreen: View {
             case "camera_permission_restricted":
                 guard e.actionId == "understand" else { return }
                 // No-op; the banner dismisses automatically on action.
-                print("CameraPermissionRestricted: understand")
+                JPDebugPrint("CameraPermissionRestricted: understand")
             case "camera_warmup_failed":
                 switch e.actionId {
                 case "retry":
-                    print("CameraInitRetry")
+                    JPDebugPrint("CameraInitRetry")
                     didShowWarmupFailModal = false
                     refreshWarmupState(forceRestart: true)
                 case "cancel":
-                    print("CameraWarmupFailed: cancel")
+                    JPDebugPrint("CameraWarmupFailed: cancel")
                 case "go_settings":
 #if canImport(UIKit)
                     if let url = URL(string: UIApplication.openSettingsURLString) {
@@ -305,7 +305,7 @@ struct CameraScreen: View {
                 case "clear_unliked":
                     do {
                         let deleted = try SessionRepository.shared.clearUnlikedItemsForCurrentSession()
-                        print("WorksetClearUnliked: deleted=\(deleted)")
+                        JPDebugPrint("WorksetClearUnliked: deleted=\(deleted)")
                         refreshSessionCounts()
                         promptCenter.show(
                             Prompt(
@@ -336,7 +336,7 @@ struct CameraScreen: View {
                             )
                         )
                     } catch {
-                        print("WorksetClearUnlikedFAILED: \(error)")
+                        JPDebugPrint("WorksetClearUnlikedFAILED: \(error)")
                     }
                 case "go_wrap":
                     showingWrapSheet = true
@@ -347,9 +347,9 @@ struct CameraScreen: View {
                         _ = try SessionRepository.shared.createNewSession(scene: scene)
                         didShowWorkset20LimitModalInThisFullState = false
                         refreshSessionCounts()
-                        print("SessionReset: ok")
+                        JPDebugPrint("SessionReset: ok")
                     } catch {
-                        print("SessionResetFAILED: \(error)")
+                        JPDebugPrint("SessionResetFAILED: \(error)")
                     }
                 case "cancel":
                     // Cancel keeps shutter disabled while workset_count == 20 (SessionRuleGate enforces this).
@@ -423,7 +423,7 @@ struct CameraScreen: View {
             Task {
                 let r = await CaptureFailureTracker.shared.recordFailure()
                 await MainActor.run {
-                    print("CaptureFailedTracked: count_in_window=\(r.countInWindow) did_trigger=\(r.didTrigger)")
+                    JPDebugPrint("CaptureFailedTracked: count_in_window=\(r.countInWindow) did_trigger=\(r.didTrigger)")
                     if r.didTrigger {
                         promptCenter.show(makeCaptureAbnormalModalPrompt(countInWindow: r.countInWindow))
                     } else {
@@ -447,7 +447,7 @@ struct CameraScreen: View {
                     promptCenter.show(makeAlbumAddFailedBannerPrompt(count: c))
                 }
             } catch {
-                print("AlbumAddFailedCountFAILED: \(error)")
+                JPDebugPrint("AlbumAddFailedCountFAILED: \(error)")
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: CaptureEvents.sessionItemsChanged)) { _ in
@@ -753,7 +753,7 @@ struct CameraScreen: View {
             updateWorksetFullBanner(currentWorksetCount: nextWorkset)
             updateWriteFailedBlockModal(writeFailedCount: writeFailedCount)
         } catch {
-            print("RefreshSessionCountsFAILED: \(error)")
+            JPDebugPrint("RefreshSessionCountsFAILED: \(error)")
         }
     }
 
@@ -762,7 +762,7 @@ struct CameraScreen: View {
             filmstripItems = try SessionRepository.shared.latestItemsForCurrentSession(limit: 30)
             if filmstripItems.count != lastFilmstripCount {
                 lastFilmstripCount = filmstripItems.count
-                print("FilmstripRefreshed: count=\(filmstripItems.count)")
+                JPDebugPrint("FilmstripRefreshed: count=\(filmstripItems.count)")
             }
             if selectedFilmstripItemId == nil {
                 selectedFilmstripItemId = filmstripItems.first?.itemId
@@ -771,7 +771,7 @@ struct CameraScreen: View {
             filmstripItems = []
             selectedFilmstripItemId = nil
             lastFilmstripCount = 0
-            print("RefreshFilmstripFAILED: \(error)")
+            JPDebugPrint("RefreshFilmstripFAILED: \(error)")
         }
     }
 
@@ -1348,7 +1348,7 @@ struct CameraScreen: View {
                     do {
                         try SessionRepository.shared.markAlbumAddSuccess(itemId: item.itemId)
                     } catch {
-                        print("AlbumRetryMarkSuccessFAILED: \(error)")
+                        JPDebugPrint("AlbumRetryMarkSuccessFAILED: \(error)")
                     }
                 }
             } catch {
@@ -1356,12 +1356,12 @@ struct CameraScreen: View {
                     // Phantom/missing asset: heal locally and exclude from results.
                     if let report = await PhantomAssetHealer.shared.healIfNeeded(itemId: item.itemId, assetId: assetId, source: "album_manual_retry") {
                         skipped += 1
-                        print("AlbumRetryHealedPhantom: item_id=\(item.itemId) action=\(report.healAction.rawValue)")
+                        JPDebugPrint("AlbumRetryHealedPhantom: item_id=\(item.itemId) action=\(report.healAction.rawValue)")
                         continue
                     }
                 }
                 failed += 1
-                print("AlbumRetryFAILED: item_id=\(item.itemId) asset_id=\(assetId) error=\(error)")
+                JPDebugPrint("AlbumRetryFAILED: item_id=\(item.itemId) asset_id=\(assetId) error=\(error)")
             }
         }
 

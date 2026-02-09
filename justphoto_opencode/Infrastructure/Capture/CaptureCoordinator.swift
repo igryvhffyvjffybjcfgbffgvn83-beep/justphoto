@@ -44,7 +44,7 @@ final class CaptureCoordinator {
     }
 
     func shutterTapped() {
-        print("ShutterTapReceived")
+        JPDebugPrint("ShutterTapReceived")
         Task {
             await pipeline.startCapturePipeline()
         }
@@ -63,16 +63,16 @@ final class CaptureCoordinator {
 private actor CapturePipeline {
     func startCapturePipeline() async {
         if let blocked = await blockedReasonIfAny() {
-            print("CaptureSkipped:blocked reason=\(blocked)")
+            JPDebugPrint("CaptureSkipped:blocked reason=\(blocked)")
             return
         }
 
         guard let summary = await insertOptimisticItemIfPossible() else {
-            print("OptimisticItemMissing")
+            JPDebugPrint("OptimisticItemMissing")
             return
         }
 
-        print("OptimisticItemInserted: item_id=\(summary.itemId) shot_seq=\(summary.shotSeq) state=\(summary.state.rawValue)")
+        JPDebugPrint("OptimisticItemInserted: item_id=\(summary.itemId) shot_seq=\(summary.shotSeq) state=\(summary.state.rawValue)")
         NotificationCenter.default.post(name: CaptureEvents.sessionItemsChanged, object: nil)
 
         // M4.20: kick off thumbnail pipeline.
@@ -85,41 +85,41 @@ private actor CapturePipeline {
 
         let simulateNoData = await MainActor.run { CaptureCoordinator.shared.consumeSimulateNoPhotoDataOnce() }
         if simulateNoData {
-            print("SimulateNoPhotoData: true")
+            JPDebugPrint("SimulateNoPhotoData: true")
             // Deadline task will convert to capture_failed.
         } else {
             do {
                 let rel = PendingFileStore.shared.makeRelativePath(itemId: summary.itemId, fileExtension: "png")
                 let data = Self.makeTinyPNGData()
                 let url = try PendingFileStore.shared.writeAtomic(data: data, toRelativePath: rel)
-                print("PendingFileWritten: item_id=\(summary.itemId) rel_path=\(rel) bytes=\(data.count) url=\(url.path)")
+                JPDebugPrint("PendingFileWritten: item_id=\(summary.itemId) rel_path=\(rel) bytes=\(data.count) url=\(url.path)")
 
                 await MainActor.run {
                     do {
                         try SessionRepository.shared.updatePendingFileRelPath(itemId: summary.itemId, relPath: rel)
                     } catch {
-                        print("PendingRelPathUpdateFAILED: \(error)")
+                        JPDebugPrint("PendingRelPathUpdateFAILED: \(error)")
                     }
                 }
 
                 await MainActor.run {
                     do {
                         try SessionRepository.shared.updateSessionItemState(itemId: summary.itemId, state: .writing)
-                        print("StateTransition: item_id=\(summary.itemId) captured_preview->writing")
+                        JPDebugPrint("StateTransition: item_id=\(summary.itemId) captured_preview->writing")
                     } catch {
-                        print("StateTransitionFAILED: \(error)")
+                        JPDebugPrint("StateTransitionFAILED: \(error)")
                     }
                 }
 
                 do {
                     let assetId = try await PhotoLibraryWriter.shared.savePhoto(fileURL: url)
-                    print("PhotoKitWriteSuccess: item_id=\(summary.itemId) asset_id=\(assetId)")
+                    JPDebugPrint("PhotoKitWriteSuccess: item_id=\(summary.itemId) asset_id=\(assetId)")
                     await MainActor.run {
                         do {
                             try SessionRepository.shared.markWriteSuccess(itemId: summary.itemId, assetId: assetId)
-                            print("StateTransition: item_id=\(summary.itemId) writing->finalized")
+                            JPDebugPrint("StateTransition: item_id=\(summary.itemId) writing->finalized")
                         } catch {
-                            print("WriteSuccessMarkFAILED: \(error)")
+                            JPDebugPrint("WriteSuccessMarkFAILED: \(error)")
                         }
                     }
 
@@ -128,47 +128,47 @@ private actor CapturePipeline {
                     // M4.24: Best-effort archive to "Just Photo" album (non-blocking).
                     do {
                         let albumId = try await AlbumArchiver.shared.archive(assetLocalIdentifier: assetId)
-                        print("AlbumArchiveSuccess: item_id=\(summary.itemId) album_id=\(albumId)")
+                        JPDebugPrint("AlbumArchiveSuccess: item_id=\(summary.itemId) album_id=\(albumId)")
                         await MainActor.run {
                             do {
                                 try SessionRepository.shared.markAlbumAddSuccess(itemId: summary.itemId)
                             } catch {
-                                print("AlbumArchiveMarkSuccessFAILED: \(error)")
+                                JPDebugPrint("AlbumArchiveMarkSuccessFAILED: \(error)")
                             }
                         }
                     } catch {
-                        print("AlbumArchiveFAILED: item_id=\(summary.itemId) error=\(error)")
+                        JPDebugPrint("AlbumArchiveFAILED: item_id=\(summary.itemId) error=\(error)")
                         await MainActor.run {
                             do {
                                 try SessionRepository.shared.updateAlbumState(itemId: summary.itemId, state: .failed)
                                 NotificationCenter.default.post(name: CaptureEvents.albumAddFailed, object: nil)
                                 Task { await AlbumAddRetryScheduler.shared.kick() }
                             } catch {
-                                print("AlbumArchiveMarkFailedFAILED: \(error)")
+                                JPDebugPrint("AlbumArchiveMarkFailedFAILED: \(error)")
                             }
                         }
                     }
                 } catch {
-                    print("PhotoKitWriteFAILED: item_id=\(summary.itemId) error=\(error)")
+                    JPDebugPrint("PhotoKitWriteFAILED: item_id=\(summary.itemId) error=\(error)")
                     await MainActor.run {
                         do {
                             try SessionRepository.shared.markWriteFailed(itemId: summary.itemId)
-                            print("StateTransition: item_id=\(summary.itemId) writing->write_failed")
+                            JPDebugPrint("StateTransition: item_id=\(summary.itemId) writing->write_failed")
 
                             NotificationCenter.default.post(name: CaptureEvents.writeFailed, object: nil)
                         } catch {
-                            print("WriteFailedMarkFAILED: \(error)")
+                            JPDebugPrint("WriteFailedMarkFAILED: \(error)")
                         }
                     }
                 }
 
                 deadlineTask.cancel()
             } catch {
-                print("PendingFileWriteFAILED: \(error)")
+                JPDebugPrint("PendingFileWriteFAILED: \(error)")
             }
         }
 
-        print("PipelineStarted")
+        JPDebugPrint("PipelineStarted")
     }
 
     private func verifyWriteAndLog(sessionId: String, assetId: String) async {
@@ -182,7 +182,7 @@ private actor CapturePipeline {
         let firstFetchStart = Date()
         let firstCount = forcedNil ? 0 : PhotoLibraryWriter.shared.fetchAssetCount(localIdentifier: assetId)
         let firstFetchMs = Int(max(0, Date().timeIntervalSince(firstFetchStart) * 1000))
-        print("PhotoWriteVerificationFirstFetch: asset_id=\(assetId) count=\(firstCount) first_fetch_ms=\(firstFetchMs) forced_nil=\(forcedNil)")
+        JPDebugPrint("PhotoWriteVerificationFirstFetch: asset_id=\(assetId) count=\(firstCount) first_fetch_ms=\(firstFetchMs) forced_nil=\(forcedNil)")
 
         if firstCount > 0 {
             await logPhotoWriteVerification(
@@ -203,7 +203,7 @@ private actor CapturePipeline {
         let retryCount = PhotoLibraryWriter.shared.fetchAssetCount(localIdentifier: assetId)
         let elapsedMs = Int(max(0, Date().timeIntervalSince(verificationStart) * 1000))
         let verifiedWithin2s = retryCount > 0 && elapsedMs <= 2_000
-        print("PhotoWriteVerificationRetryFetch: asset_id=\(assetId) count=\(retryCount) elapsed_ms=\(elapsedMs)")
+        JPDebugPrint("PhotoWriteVerificationRetryFetch: asset_id=\(assetId) count=\(retryCount) elapsed_ms=\(elapsedMs)")
 
         await logPhotoWriteVerification(
             sessionId: sessionId,
@@ -237,7 +237,7 @@ private actor CapturePipeline {
                     verifiedWithin2s: verifiedWithin2s
                 )
             } catch {
-                print("PhotoWriteVerificationLogFAILED: \(error)")
+                JPDebugPrint("PhotoWriteVerificationLogFAILED: \(error)")
             }
         }
     }
@@ -247,19 +247,19 @@ private actor CapturePipeline {
             do {
                 return try SessionRepository.shared.sessionItemPendingFileRelPath(itemId: itemId)
             } catch {
-                print("CaptureDeadlineReadFAILED: \(error)")
+                JPDebugPrint("CaptureDeadlineReadFAILED: \(error)")
                 return nil
             }
         }
 
         if let relPath, PendingFileStore.shared.fileExists(relativePath: relPath) {
-            print("CaptureDeadlineSatisfied: item_id=\(itemId)")
+            JPDebugPrint("CaptureDeadlineSatisfied: item_id=\(itemId)")
             return
         }
 
         let defaultRel = PendingFileStore.shared.makeRelativePath(itemId: itemId, fileExtension: "png")
         if PendingFileStore.shared.fileExists(relativePath: defaultRel) {
-            print("CaptureDeadlineSatisfied: item_id=\(itemId) (file_exists_no_db_rel_path)")
+            JPDebugPrint("CaptureDeadlineSatisfied: item_id=\(itemId) (file_exists_no_db_rel_path)")
             return
         }
 
@@ -267,17 +267,17 @@ private actor CapturePipeline {
             do {
                 return try SessionRepository.shared.cleanupItem(itemId: itemId).deletedRowCount
             } catch {
-                print("CaptureDeadlineDeleteFAILED: \(error)")
+                JPDebugPrint("CaptureDeadlineDeleteFAILED: \(error)")
                 return 0
             }
         }
 
         guard deleted > 0 else {
-            print("CaptureDeadlineNoop: item_id=\(itemId)")
+            JPDebugPrint("CaptureDeadlineNoop: item_id=\(itemId)")
             return
         }
 
-        print("CaptureFailed: item_removed item_id=\(itemId)")
+        JPDebugPrint("CaptureFailed: item_removed item_id=\(itemId)")
         await MainActor.run {
             NotificationCenter.default.post(name: CaptureEvents.captureFailed, object: nil)
         }
@@ -310,7 +310,7 @@ private actor CapturePipeline {
                 return nil
             } catch {
                 // Defensive: if DB read fails, don't block the pipeline at this milestone.
-                print("CaptureGateReadFAILED: \(error)")
+                JPDebugPrint("CaptureGateReadFAILED: \(error)")
                 return nil
             }
         }
@@ -321,7 +321,7 @@ private actor CapturePipeline {
             do {
                 return try SessionRepository.shared.insertOptimisticCapturedPreviewItemAndFlush()
             } catch {
-                print("OptimisticItemInsertFAILED: \(error)")
+                JPDebugPrint("OptimisticItemInsertFAILED: \(error)")
                 return nil
             }
         }
@@ -335,12 +335,12 @@ private actor CapturePipeline {
         }
 
         guard let summary else {
-            print("RetrySaveNoop: missing item_id=\(itemId)")
+            JPDebugPrint("RetrySaveNoop: missing item_id=\(itemId)")
             return false
         }
 
         if summary.state != .write_failed {
-            print("RetrySaveNoop: state=\(summary.state.rawValue) item_id=\(itemId)")
+            JPDebugPrint("RetrySaveNoop: state=\(summary.state.rawValue) item_id=\(itemId)")
             return false
         }
 
@@ -351,10 +351,10 @@ private actor CapturePipeline {
                 do {
                     try SessionRepository.shared.markWriteSuccess(itemId: itemId, assetId: assetId)
                 } catch {
-                    print("RetrySaveHealMarkSuccessFAILED: \(error)")
+                    JPDebugPrint("RetrySaveHealMarkSuccessFAILED: \(error)")
                 }
             }
-            print("RetrySaveHealed: asset_id_present item_id=\(itemId)")
+            JPDebugPrint("RetrySaveHealed: asset_id_present item_id=\(itemId)")
             return true
         }
 
@@ -367,11 +367,11 @@ private actor CapturePipeline {
                     do {
                         try SessionRepository.shared.updatePendingFileRelPath(itemId: itemId, relPath: defaultRel)
                     } catch {
-                        print("RetrySaveBackfillPendingRelFAILED: \(error)")
+                        JPDebugPrint("RetrySaveBackfillPendingRelFAILED: \(error)")
                     }
                 }
                 rel = defaultRel
-                print("RetrySaveBackfillPendingRel: item_id=\(itemId) rel=\(defaultRel)")
+                JPDebugPrint("RetrySaveBackfillPendingRel: item_id=\(itemId) rel=\(defaultRel)")
             }
         }
 
@@ -383,23 +383,23 @@ private actor CapturePipeline {
                 let defaultRel = PendingFileStore.shared.makeRelativePath(itemId: itemId, fileExtension: "png")
                 let data = Self.makeTinyPNGData()
                 let url = try PendingFileStore.shared.writeAtomic(data: data, toRelativePath: defaultRel)
-                print("RetrySaveHealedPendingWritten: item_id=\(itemId) rel=\(defaultRel) url=\(url.path) bytes=\(data.count)")
+                JPDebugPrint("RetrySaveHealedPendingWritten: item_id=\(itemId) rel=\(defaultRel) url=\(url.path) bytes=\(data.count)")
                 await MainActor.run {
                     do {
                         try SessionRepository.shared.updatePendingFileRelPath(itemId: itemId, relPath: defaultRel)
                     } catch {
-                        print("RetrySaveHealedPendingRelUpdateFAILED: \(error)")
+                        JPDebugPrint("RetrySaveHealedPendingRelUpdateFAILED: \(error)")
                     }
                 }
                 rel = defaultRel
             } catch {
-                print("RetrySaveHealedPendingWriteFAILED: \(error)")
+                JPDebugPrint("RetrySaveHealedPendingWriteFAILED: \(error)")
             }
         }
         #endif
 
         guard let rel else {
-            print("RetrySaveFAILED: missing pending_file_rel_path item_id=\(itemId)")
+            JPDebugPrint("RetrySaveFAILED: missing pending_file_rel_path item_id=\(itemId)")
             return false
         }
 
@@ -407,12 +407,12 @@ private actor CapturePipeline {
         do {
             url = try PendingFileStore.shared.fullURL(forRelativePath: rel)
         } catch {
-            print("RetrySaveFAILED: bad pending path item_id=\(itemId) rel=\(rel) error=\(error)")
+            JPDebugPrint("RetrySaveFAILED: bad pending path item_id=\(itemId) rel=\(rel) error=\(error)")
             return false
         }
 
         guard FileManager.default.fileExists(atPath: url.path) else {
-            print("RetrySaveFAILED: pending missing item_id=\(itemId) url=\(url.path)")
+            JPDebugPrint("RetrySaveFAILED: pending missing item_id=\(itemId) url=\(url.path)")
             return false
         }
 
@@ -420,29 +420,29 @@ private actor CapturePipeline {
             do {
                 try SessionRepository.shared.updateSessionItemState(itemId: itemId, state: .writing)
             } catch {
-                print("RetrySaveStateToWritingFAILED: \(error)")
+                JPDebugPrint("RetrySaveStateToWritingFAILED: \(error)")
             }
         }
 
         do {
             let assetId = try await PhotoLibraryWriter.shared.savePhoto(fileURL: url)
-            print("RetrySavePhotoKitSuccess: item_id=\(itemId) asset_id=\(assetId)")
+            JPDebugPrint("RetrySavePhotoKitSuccess: item_id=\(itemId) asset_id=\(assetId)")
             await MainActor.run {
                 do {
                     try SessionRepository.shared.markWriteSuccess(itemId: itemId, assetId: assetId)
                 } catch {
-                    print("RetrySaveMarkSuccessFAILED: \(error)")
+                    JPDebugPrint("RetrySaveMarkSuccessFAILED: \(error)")
                 }
             }
             return true
         } catch {
-            print("RetrySavePhotoKitFAILED: item_id=\(itemId) error=\(error)")
+            JPDebugPrint("RetrySavePhotoKitFAILED: item_id=\(itemId) error=\(error)")
             await MainActor.run {
                 do {
                     try SessionRepository.shared.markWriteFailed(itemId: itemId)
                     NotificationCenter.default.post(name: CaptureEvents.writeFailed, object: nil)
                 } catch {
-                    print("RetrySaveMarkFailedFAILED: \(error)")
+                    JPDebugPrint("RetrySaveMarkFailedFAILED: \(error)")
                 }
             }
             return false
@@ -454,20 +454,20 @@ private actor CapturePipeline {
             do {
                 return try SessionRepository.shared.cleanupItem(itemId: itemId).deletedRowCount
             } catch {
-                print("AbandonItemFAILED: \(error)")
+                JPDebugPrint("AbandonItemFAILED: \(error)")
                 return 0
             }
         }
 
         if deleted > 0 {
-            print("AbandonItemOK: item_id=\(itemId)")
+            JPDebugPrint("AbandonItemOK: item_id=\(itemId)")
             await MainActor.run {
                 NotificationCenter.default.post(name: CaptureEvents.writeFailed, object: nil)
             }
             return true
         }
 
-        print("AbandonItemNoop: item_id=\(itemId)")
+        JPDebugPrint("AbandonItemNoop: item_id=\(itemId)")
         return false
     }
 }

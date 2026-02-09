@@ -10,21 +10,23 @@ struct CameraPreviewView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> PreviewUIView {
         let v = PreviewUIView()
-        v.videoPreviewLayer.session = session
-        v.videoPreviewLayer.videoGravity = .resizeAspectFill
+        if let l = v.videoPreviewLayer {
+            l.session = session
+            l.videoGravity = .resizeAspectFill
+        }
         v.updateDebugROIs(debugROIs)
         return v
     }
 
     func updateUIView(_ uiView: PreviewUIView, context: Context) {
-        uiView.videoPreviewLayer.session = session
+        uiView.videoPreviewLayer?.session = session
         uiView.updateDebugROIs(debugROIs)
     }
 }
 
 final class PreviewUIView: UIView {
     override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
-    var videoPreviewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
+    var videoPreviewLayer: AVCaptureVideoPreviewLayer? { layer as? AVCaptureVideoPreviewLayer }
 
     private let faceLayer = CAShapeLayer()
     private let eyeLayer = CAShapeLayer()
@@ -56,14 +58,24 @@ final class PreviewUIView: UIView {
     }
 
     func updateDebugROIs(_ rois: ROISet?) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+
         faceLayer.frame = bounds
         eyeLayer.frame = bounds
         bgLayer.frame = bounds
 
+        // Always clear first to avoid stale drawings.
+        faceLayer.path = nil
+        eyeLayer.path = nil
+        bgLayer.path = nil
+
+        guard videoPreviewLayer != nil else {
+            return
+        }
+
         guard let rois else {
-            faceLayer.path = nil
-            eyeLayer.path = nil
-            bgLayer.path = nil
             return
         }
 
@@ -76,9 +88,7 @@ final class PreviewUIView: UIView {
         }
         bgLayer.path = bgPath.cgPath
 
-        if rois.eyeROIs.isEmpty {
-            eyeLayer.path = nil
-        } else {
+        if !rois.eyeROIs.isEmpty {
             let eyePath = UIBezierPath()
             for eye in rois.eyeROIs {
                 eyePath.append(UIBezierPath(rect: convertPortraitNormalizedToLayerRect(eye)))
@@ -89,6 +99,7 @@ final class PreviewUIView: UIView {
 
     private func convertPortraitNormalizedToLayerRect(_ r: CGRect) -> CGRect {
         // PoseSpec canonical space is portrait-normalized and Y-Down, matching AVCaptureMetadataOutput.
+        guard let videoPreviewLayer else { return .zero }
         return videoPreviewLayer.layerRectConverted(fromMetadataOutputRect: r)
     }
 }

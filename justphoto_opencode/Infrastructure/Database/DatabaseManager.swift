@@ -64,9 +64,9 @@ final class DatabaseManager {
                 // This is the "flush" used for M1.19 (backgrounding, write_failed).
                 try db.execute(sql: "PRAGMA wal_checkpoint(TRUNCATE)")
             }
-            print("DBFlushed: \(reason)")
+            JPDebugPrint("DBFlushed: \(reason)")
         } catch {
-            print("DBFlushFAILED: \(reason) error=\(error)")
+            JPDebugPrint("DBFlushFAILED: \(reason) error=\(error)")
         }
     }
 }

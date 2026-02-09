@@ -1,5 +1,4 @@
 import XCTest
-import XCTest
 import CoreGraphics
 
 @testable import justphoto_opencode
@@ -8,8 +7,8 @@ final class ROIComputerEyeFilteringTests: XCTestCase {
     func testEyeROIs_areComputedIndependently_whenOneEyeFailsPrecisionGate() {
         // Phase B2: precision estimates are "smaller is better".
         // Left eye has a bad worst-point precision => should be dropped; right should remain.
-        let leftEye = VisionLandmark(pPortrait: CGPoint(x: 0.35, y: 0.45), confidence: 1.0, precisionEstimatesPerPoint: [0.020])
-        let rightEye = VisionLandmark(pPortrait: CGPoint(x: 0.65, y: 0.45), confidence: 1.0, precisionEstimatesPerPoint: [0.007])
+        let leftEye = VisionLandmark(pPortrait: CGPoint(x: 0.35, y: 0.45), confidence: nil, aspectRatioHeightOverWidth: 0.40, precisionEstimatesPerPoint: [0.020])
+        let rightEye = VisionLandmark(pPortrait: CGPoint(x: 0.65, y: 0.45), confidence: nil, aspectRatioHeightOverWidth: 0.40, precisionEstimatesPerPoint: [0.007])
 
         let face = VisionFaceResult(
             faceBBoxPortrait: CGRect(x: 0.25, y: 0.25, width: 0.50, height: 0.50),
@@ -29,8 +28,9 @@ final class ROIComputerEyeFilteringTests: XCTestCase {
     }
 
     func testEyeROIs_areComputedIndependently_whenOneEyeFailsConfidenceGate() {
-        let leftEye = VisionLandmark(pPortrait: CGPoint(x: 0.35, y: 0.45), confidence: 0.20, precisionEstimatesPerPoint: [1.0])
-        let rightEye = VisionLandmark(pPortrait: CGPoint(x: 0.65, y: 0.45), confidence: 1.0, precisionEstimatesPerPoint: [0.10])
+        // Fallback path when no precision estimates are available.
+        let leftEye = VisionLandmark(pPortrait: CGPoint(x: 0.35, y: 0.45), confidence: 0.20, aspectRatioHeightOverWidth: 0.40, precisionEstimatesPerPoint: nil)
+        let rightEye = VisionLandmark(pPortrait: CGPoint(x: 0.65, y: 0.45), confidence: 1.0, aspectRatioHeightOverWidth: 0.40, precisionEstimatesPerPoint: nil)
 
         let face = VisionFaceResult(
             faceBBoxPortrait: CGRect(x: 0.25, y: 0.25, width: 0.50, height: 0.50),
@@ -49,8 +49,8 @@ final class ROIComputerEyeFilteringTests: XCTestCase {
     }
 
     func testEyeROIs_includeBothEyes_whenBothPassGates() {
-        let leftEye = VisionLandmark(pPortrait: CGPoint(x: 0.35, y: 0.45), confidence: 1.0, precisionEstimatesPerPoint: [0.007, 0.008])
-        let rightEye = VisionLandmark(pPortrait: CGPoint(x: 0.65, y: 0.45), confidence: 1.0, precisionEstimatesPerPoint: [0.006, 0.009])
+        let leftEye = VisionLandmark(pPortrait: CGPoint(x: 0.35, y: 0.45), confidence: nil, aspectRatioHeightOverWidth: 0.40, precisionEstimatesPerPoint: [0.007, 0.008])
+        let rightEye = VisionLandmark(pPortrait: CGPoint(x: 0.65, y: 0.45), confidence: nil, aspectRatioHeightOverWidth: 0.40, precisionEstimatesPerPoint: [0.006, 0.009])
 
         let face = VisionFaceResult(
             faceBBoxPortrait: CGRect(x: 0.25, y: 0.25, width: 0.50, height: 0.50),

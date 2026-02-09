@@ -42,7 +42,7 @@ actor PhantomAssetHealer {
         }
 
         let hash = Self.assetIdHash(assetId)
-        print("PhantomAssetDetected: source=\(source) item_id=\(itemId) asset_id_hash=\(hash) auth=\(authSnapshot)")
+        JPDebugPrint("PhantomAssetDetected: source=\(source) item_id=\(itemId) asset_id_hash=\(hash) auth=\(authSnapshot)")
 
         // MVP heal: prune local item.
         let deleted: Int = await MainActor.run {
@@ -71,16 +71,16 @@ actor PhantomAssetHealer {
                     healAction: action.rawValue
                 )
             } catch {
-                print("PhantomAssetDetectedLogFAILED: \(error)")
+                JPDebugPrint("PhantomAssetDetectedLogFAILED: \(error)")
             }
         } else {
-            print("PhantomAssetDetectedLogSkipped: missing_session")
+            JPDebugPrint("PhantomAssetDetectedLogSkipped: missing_session")
         }
 
         if didPrune {
-            print("PhantomAssetHealed: action=pruned item_id=\(itemId)")
+            JPDebugPrint("PhantomAssetHealed: action=pruned item_id=\(itemId)")
         } else {
-            print("PhantomAssetHealSkipped: action=skipped item_id=\(itemId)")
+            JPDebugPrint("PhantomAssetHealSkipped: action=skipped item_id=\(itemId)")
         }
 
         return HealReport(
