@@ -872,7 +872,7 @@ struct CameraScreen: View {
             if cameraAuth == .authorized, cameraFrames.state != .failed {
                 CameraPreviewView(
                     session: cameraFrames.session,
-                    debugROIs: ROIComputer.compute(face: vision.lastFace)
+                    debugROIs: ROIComputer.compute(pose: vision.lastPose, face: vision.lastFace)
                 )
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }

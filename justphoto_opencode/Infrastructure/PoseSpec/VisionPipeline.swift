@@ -3,6 +3,7 @@ import Combine
 import CoreGraphics
 import ImageIO
 import Vision
+import CoreVideo
 
 // M6.8: Run Vision requests on preview frames to produce landmarks + confidences.
 
@@ -60,79 +61,146 @@ actor VisionPipeline {
 
     private var isProcessing: Bool = false
 
+    // M6.8 Hotfix: observability + data-flow diagnostics.
+    private var lastDebugPrintTsMs: Int = 0
+    private var droppedFramesSinceLastPrint: Int = 0
+
     func process(pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation) async -> VisionFrameResult? {
         if isProcessing {
+            droppedFramesSinceLastPrint += 1
             return nil
         }
         isProcessing = true
         defer { isProcessing = false }
 
+        let tsMs = Int(Date().timeIntervalSince1970 * 1000)
+        let shouldPrint = (tsMs - lastDebugPrintTsMs) >= 1000
+
         do {
             try sequenceHandler.perform([poseRequest, faceRequest], on: pixelBuffer, orientation: orientation)
         } catch {
             #if DEBUG
-            print("VisionPipelinePerformFAILED: \(error)")
+            if shouldPrint {
+                print("DEBUG_PIPELINE: perform_failed o=\(orientation.rawValue) err=\(error)")
+            }
             #endif
             return VisionFrameResult(pose: nil, face: nil)
         }
 
-        let pose = parsePose(orientation: orientation)
-        let face = parseFace(orientation: orientation)
+        let bodyCount = poseRequest.results?.count ?? 0
+        let faceCount = faceRequest.results?.count ?? 0
+
+        let pose = parsePose(orientation: orientation, debugEnabled: shouldPrint)
+        let face = parseFace(orientation: orientation, debugEnabled: shouldPrint)
+
+        #if DEBUG
+        if shouldPrint {
+            lastDebugPrintTsMs = tsMs
+
+            let w = CVPixelBufferGetWidth(pixelBuffer)
+            let h = CVPixelBufferGetHeight(pixelBuffer)
+            let fmt = CVPixelBufferGetPixelFormatType(pixelBuffer)
+            let joints = pose?.points.count ?? 0
+            let dropped = droppedFramesSinceLastPrint
+            droppedFramesSinceLastPrint = 0
+
+            print(
+                "DEBUG_PIPELINE: O=\(orientation.rawValue) | W=\(w) H=\(h) FMT=\(Self.fourCC(fmt))(\(fmt)) | Body=\(bodyCount) | Face=\(faceCount) | pose=\(pose != nil) face=\(face != nil) | Joints=\(joints) | Dropped=\(dropped)"
+            )
+        }
+        #endif
         return VisionFrameResult(pose: pose, face: face)
     }
 
-    private func parsePose(orientation: CGImagePropertyOrientation) -> VisionPoseResult? {
+    // M6.8 Hotfix (Relax Logic): if Vision produced an observation, return a non-nil pose.
+    // Do NOT discard the entire pose due to confidence thresholds or missing core joints.
+    private func parsePose(orientation: CGImagePropertyOrientation, debugEnabled: Bool) -> VisionPoseResult? {
         guard let results = poseRequest.results, !results.isEmpty else {
             return nil
         }
 
         // Use the first observation (Vision typically sorts by confidence).
         let obs = results[0]
-        guard let all = try? obs.recognizedPoints(.all) else {
-            return nil
+        let all: [VNHumanBodyPoseObservation.JointName: VNRecognizedPoint]
+        do {
+            all = try obs.recognizedPoints(.all)
+        } catch {
+            #if DEBUG
+            if debugEnabled {
+                print("DEBUG_PIPELINE: pose_recognizedPoints_failed err=\(error)")
+            }
+            #endif
+            return VisionPoseResult(points: [:])
         }
 
         var out: [String: VisionLandmark] = [:]
 
+        var confPosCount = 0
+        var maxConf: Float = 0
+
         // Map all recognized joints to canonical keys.
         for (jointKey, rp) in all {
-            guard rp.confidence > 0 else { continue }
-            let jointName = String(describing: jointKey)
-            let key = "body." + jointName
+            if rp.confidence > 0 { confPosCount += 1 }
+            if rp.confidence > maxConf { maxConf = rp.confidence }
+            let key = "body." + String(describing: jointKey)
             let p = PoseSpecCoordinateNormalizer.shared.normalize(rp.location, sourceOrientation: orientation)
             out[key] = VisionLandmark(pPortrait: p, confidence: rp.confidence, aspectRatioHeightOverWidth: nil, precisionEstimatesPerPoint: nil)
         }
 
-        // Minimal required keys for later steps.
-        let core = [
-            "body.leftShoulder",
-            "body.rightShoulder",
-            "body.leftHip",
-            "body.rightHip",
-        ]
+        #if DEBUG
+        if debugEnabled {
+            print("DEBUG_PIPELINE: pose_obs0 joints_total=\(all.count) conf>0=\(confPosCount) maxConf=\(String(format: "%.2f", maxConf))")
 
-        if core.allSatisfy({ out[$0] == nil }) {
-            return nil
+            // Print a small, stable subset of joints for quick sanity.
+            let coreKeys: [(VNHumanBodyPoseObservation.JointName, String)] = [
+                (.nose, "nose"),
+                (.neck, "neck"),
+                (.leftShoulder, "leftShoulder"),
+                (.rightShoulder, "rightShoulder"),
+                (.leftHip, "leftHip"),
+                (.rightHip, "rightHip"),
+            ]
+            for (jn, name) in coreKeys {
+                if let rp = all[jn] {
+                    print("DEBUG_PIPELINE: pose_joint \(name) conf=\(String(format: "%.2f", rp.confidence)) loc=\(rp.location)")
+                } else {
+                    print("DEBUG_PIPELINE: pose_joint \(name) missing")
+                }
+            }
         }
+        #endif
 
         return VisionPoseResult(points: out)
     }
 
-    private func parseFace(orientation: CGImagePropertyOrientation) -> VisionFaceResult? {
+    // M6.8 Hotfix (Relax Logic): if Vision produced a face observation, return a non-nil face.
+    // Do NOT discard face due to missing landmarks or feature extraction failures.
+    private func parseFace(orientation: CGImagePropertyOrientation, debugEnabled: Bool) -> VisionFaceResult? {
         guard let results = faceRequest.results, !results.isEmpty else {
             return nil
         }
 
         // Use the first face.
         let face = results[0]
-        guard let landmarks = face.landmarks else {
-            return nil
-        }
-
         let bboxImage = face.boundingBox
         let bboxPortrait = PoseSpecCoordinateNormalizer.shared.normalizeRect(bboxImage, sourceOrientation: orientation)
-
         let faceConf = face.confidence
+
+        guard let landmarks = face.landmarks else {
+            #if DEBUG
+            if debugEnabled {
+                print("DEBUG_PIPELINE: face_landmarks_missing conf=\(String(format: "%.2f", faceConf)) bbox=\(bboxImage)")
+            }
+            #endif
+
+            return VisionFaceResult(
+                faceBBoxPortrait: bboxPortrait,
+                leftEyeCenter: nil,
+                rightEyeCenter: nil,
+                noseCenter: nil,
+                faceConfidence: faceConf
+            )
+        }
 
         // VNFaceLandmarks2D points are normalized in the face bounding box coordinate space.
         // Convert them to image-normalized coordinates before applying portrait normalization.
@@ -174,10 +242,14 @@ actor VisionPipeline {
             return nil
         }()
 
-        // Require at least one stable feature so "cover face" can turn this false.
-        if lEye == nil && rEye == nil && n == nil {
-            return nil
+        #if DEBUG
+        if debugEnabled {
+            let l = (lEye != nil) ? "1" : "0"
+            let r = (rEye != nil) ? "1" : "0"
+            let nn = (n != nil) ? "1" : "0"
+            print("DEBUG_PIPELINE: face_obs0 conf=\(String(format: "%.2f", faceConf)) features lEye=\(l) rEye=\(r) nose=\(nn)")
         }
+        #endif
 
         return VisionFaceResult(
             faceBBoxPortrait: bboxPortrait,
@@ -186,6 +258,14 @@ actor VisionPipeline {
             noseCenter: n,
             faceConfidence: faceConf
         )
+    }
+
+    private static func fourCC(_ v: OSType) -> String {
+        let a = Character(UnicodeScalar((v >> 24) & 0xff)!)
+        let b = Character(UnicodeScalar((v >> 16) & 0xff)!)
+        let c = Character(UnicodeScalar((v >> 8) & 0xff)!)
+        let d = Character(UnicodeScalar(v & 0xff)!)
+        return String([a, b, c, d])
     }
 
     private static func center(of region: VNFaceLandmarkRegion2D?) -> CGPoint? {
@@ -302,7 +382,7 @@ final class VisionPipelineController: ObservableObject {
                 if tsMs - self.lastConsolePrintTsMs >= 1000 {
                     self.lastConsolePrintTsMs = tsMs
                     let faceConfStr = String(format: "%.2f", self.lastFaceConfidence)
-                    print("VisionState: poseDetected=\(self.poseDetected) faceDetected=\(self.faceDetected) posePoints=\(self.lastPosePointCount) faceConf=\(faceConfStr)")
+                    print("DEBUG_PIPELINE: VisionState poseDetected=\(self.poseDetected) faceDetected=\(self.faceDetected) posePoints=\(self.lastPosePointCount) faceConf=\(faceConfStr)")
                 }
                 #endif
             }

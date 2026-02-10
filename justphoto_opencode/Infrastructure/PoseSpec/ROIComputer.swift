@@ -5,22 +5,72 @@ import CoreGraphics
 
 struct ROISet: Sendable {
     let faceROI: CGRect
+    // Optional debug ROI derived from pose joints (portrait-normalized, unit space).
+    // Not required by PoseSpec v1.1.4 but useful for diagnosing pose/normalization issues.
+    let bodyROI: CGRect?
     let eyeROIs: [CGRect]
     let bgRingRects: [CGRect]
 }
 
 enum ROIComputer {
-    static func compute(face: VisionFaceResult?) -> ROISet? {
+    static func compute(pose: VisionPoseResult?, face: VisionFaceResult?) -> ROISet? {
         guard let face else { return nil }
         let rules = PoseSpecROIRulesCache.shared.rules
 
         let unit = CGRect(x: 0, y: 0, width: 1, height: 1)
 
         // Phase B1: Last-line-of-defense clamp before returning any ROI (prevents out-of-bounds crop crashes).
-        let faceROI = clampToUnit(computeFaceROI(faceBBox: face.faceBBoxPortrait, paddingX: rules.facePadX, paddingY: rules.facePadY), unit: unit)
+        let faceRaw = computeFaceROI(faceBBox: face.faceBBoxPortrait, paddingX: rules.facePadX, paddingY: rules.facePadY)
+        let faceROI = clampToUnit(faceRaw, unit: unit)
         if faceROI.isNull || faceROI.isEmpty {
             return nil
         }
+
+        // M6.9 Hotfix: sanitize pose joints before computing a body bounding box.
+        // Do NOT let confidence==0 placeholders (often (0,1)) distort min/max.
+        let bodyROI: CGRect? = {
+            guard let pose else { return nil }
+            let landmarks = pose.points.values
+
+            let valid = landmarks.filter {
+                let c = $0.confidence ?? 0
+                return c > 0 && $0.pPortrait.x.isFinite && $0.pPortrait.y.isFinite
+            }
+            guard !valid.isEmpty else {
+                #if DEBUG
+                maybePrintROILog(bodyRaw: nil, bodyClamped: nil, validCount: 0, totalCount: landmarks.count)
+                #endif
+                return nil
+            }
+
+            var minX = CGFloat.greatestFiniteMagnitude
+            var minY = CGFloat.greatestFiniteMagnitude
+            var maxX = -CGFloat.greatestFiniteMagnitude
+            var maxY = -CGFloat.greatestFiniteMagnitude
+
+            for v in valid {
+                minX = min(minX, v.pPortrait.x)
+                minY = min(minY, v.pPortrait.y)
+                maxX = max(maxX, v.pPortrait.x)
+                maxY = max(maxY, v.pPortrait.y)
+            }
+
+            let raw = CGRect(x: minX, y: minY, width: max(0, maxX - minX), height: max(0, maxY - minY))
+            let clamped = clampToUnit(raw, unit: unit)
+
+            #if DEBUG
+            maybePrintROILog(bodyRaw: raw, bodyClamped: clamped, validCount: valid.count, totalCount: landmarks.count)
+            #endif
+
+            if clamped.isNull || clamped.isEmpty {
+                return nil
+            }
+            return clamped
+        }()
+
+        #if DEBUG
+        maybePrintFaceClampLog(faceRaw: faceRaw, faceClamped: faceROI)
+        #endif
 
         // Phase B1: Fix "one-eye" geometry/iteration bug by explicitly computing left/right eye ROIs.
         // Phase B2: Add per-eye filtering so left/right ROIs disappear independently when occluded.
@@ -81,7 +131,7 @@ enum ROIComputer {
             let bg = computeBgRingRects(frame: unit, minus: faceROI)
                 .map { clampToUnit($0, unit: unit) }
                 .filter { !$0.isNull && !$0.isEmpty && $0.width > 0.0001 && $0.height > 0.0001 }
-            return ROISet(faceROI: faceROI, eyeROIs: [], bgRingRects: bg)
+            return ROISet(faceROI: faceROI, bodyROI: bodyROI, eyeROIs: [], bgRingRects: bg)
         }
 
         if keepLeft, let leftEye {
@@ -103,7 +153,11 @@ enum ROIComputer {
             .map { clampToUnit($0, unit: unit) }
             .filter { !$0.isNull && !$0.isEmpty && $0.width > 0.0001 && $0.height > 0.0001 }
 
-        return ROISet(faceROI: faceROI, eyeROIs: eyeROIs, bgRingRects: bg)
+        return ROISet(faceROI: faceROI, bodyROI: bodyROI, eyeROIs: eyeROIs, bgRingRects: bg)
+    }
+
+    static func compute(face: VisionFaceResult?) -> ROISet? {
+        compute(pose: (nil as VisionPoseResult?), face: face)
     }
 
     private static func shouldKeepEyeLandmark(
@@ -148,6 +202,39 @@ enum ROIComputer {
 
     #if DEBUG
     private static var lastEyeDetectiveLogTsMs: Int = 0
+
+    private static var lastROILogTsMs: Int = 0
+
+    private static func maybePrintROILog(bodyRaw: CGRect?, bodyClamped: CGRect?, validCount: Int, totalCount: Int) {
+        guard Thread.isMainThread else { return }
+        let tsMs = Int(Date().timeIntervalSince1970 * 1000)
+        if tsMs - lastROILogTsMs < 1000 {
+            return
+        }
+        lastROILogTsMs = tsMs
+
+        func rectStr(_ r: CGRect?) -> String {
+            guard let r else { return "nil" }
+            return String(format: "[%.3f, %.3f, %.3f, %.3f]", r.minX, r.minY, r.maxX, r.maxY)
+        }
+
+        print("DEBUG_ROI: BodyRaw=\(rectStr(bodyRaw)) -> Clamped=\(rectStr(bodyClamped)) validJoints=\(validCount)/\(totalCount)")
+    }
+
+    private static func maybePrintFaceClampLog(faceRaw: CGRect, faceClamped: CGRect) {
+        guard Thread.isMainThread else { return }
+        let tsMs = Int(Date().timeIntervalSince1970 * 1000)
+        if tsMs - lastROILogTsMs < 1000 {
+            return
+        }
+
+        // Do not update the timestamp here; body log is higher-signal.
+        let raw = String(format: "[%.3f, %.3f, %.3f, %.3f]", faceRaw.minX, faceRaw.minY, faceRaw.maxX, faceRaw.maxY)
+        let clamped = String(format: "[%.3f, %.3f, %.3f, %.3f]", faceClamped.minX, faceClamped.minY, faceClamped.maxX, faceClamped.maxY)
+        if raw != clamped {
+            print("DEBUG_ROI: FaceRaw=\(raw) -> Clamped=\(clamped)")
+        }
+    }
 
     private static func maybePrintEyeDetectiveLog(
         face: VisionFaceResult,
