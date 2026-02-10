@@ -31,6 +31,14 @@ struct VisionLandmark: Sendable {
 struct VisionPoseResult: Sendable {
     // Canonical keys that match PoseSpec binding paths (e.g. body.leftShoulder).
     let points: [String: VisionLandmark]
+
+    // Phase 1: Preserve the raw observation for MetricComputer's normalization adapter.
+    // This is wrapped as @unchecked Sendable so we can pass it through Task.detached boundaries.
+    let rawObservation: UncheckedSendablePoseObservation?
+}
+
+struct UncheckedSendablePoseObservation: @unchecked Sendable {
+    let observation: VNHumanBodyPoseObservation
 }
 
 struct VisionFaceResult: Sendable {
@@ -130,7 +138,7 @@ actor VisionPipeline {
                 print("DEBUG_PIPELINE: pose_recognizedPoints_failed err=\(error)")
             }
             #endif
-            return VisionPoseResult(points: [:])
+            return VisionPoseResult(points: [:], rawObservation: nil)
         }
 
         var out: [String: VisionLandmark] = [:]
@@ -170,7 +178,7 @@ actor VisionPipeline {
         }
         #endif
 
-        return VisionPoseResult(points: out)
+        return VisionPoseResult(points: out, rawObservation: UncheckedSendablePoseObservation(observation: obs))
     }
 
     // M6.8 Hotfix (Relax Logic): if Vision produced a face observation, return a non-nil face.
@@ -366,6 +374,20 @@ final class VisionPipelineController: ObservableObject {
             guard let r = await VisionPipeline.shared.process(pixelBuffer: pixelBuffer, orientation: orientation) else {
                 return
             }
+
+            // M6.10 Phase 1: dump normalized pose landmarks each processed frame.
+            // NOTE: do not do any metric math yet.
+            #if DEBUG
+            _ = MetricComputer.shared.computeMetrics(
+                context: MetricContext(
+                    pose: r.pose,
+                    face: r.face,
+                    rois: nil,
+                    pixelBuffer: nil,
+                    orientation: orientation
+                )
+            )
+            #endif
 
             let tsMs = Int(Date().timeIntervalSince1970 * 1000)
             await MainActor.run {
