@@ -30,18 +30,20 @@ enum LandmarkBindings {
     // Stable ordered extraction list for Phase 1 logging.
     // Keep this list small and deterministic to avoid log noise.
     static let orderedBodyJoints: [VNHumanBodyPoseObservation.JointName] = [
-        .nose,
         .neck,
+        .root,
         .leftShoulder,
         .rightShoulder,
-        .leftHip,
-        .rightHip,
-        .leftAnkle,
-        .rightAnkle,
-        .leftEye,
-        .rightEye,
+        .leftElbow,
+        .rightElbow,
         .leftWrist,
         .rightWrist,
+        .leftHip,
+        .rightHip,
+        .leftKnee,
+        .rightKnee,
+        .leftAnkle,
+        .rightAnkle,
     ]
 
     // Canonical PoseSpec `metric.landmarks` keys for pose joints.
@@ -64,11 +66,5 @@ enum LandmarkBindings {
         .rightHip: .rHip,
         .leftAnkle: .lAnkle,
         .rightAnkle: .rAnkle,
-
-        // Phase 1 convenience mapping: treat pose `nose` as `noseTip` for logging.
-        // (PoseSpec.json defines noseTip under face.*; Phase 2+ will reconcile.)
-        .nose: .noseTip,
-        .leftEye: .lEye,
-        .rightEye: .rEye,
     ]
 }

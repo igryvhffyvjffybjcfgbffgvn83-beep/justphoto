@@ -19,7 +19,7 @@ struct PoseLandmarkNormalizationStats: Sendable {
     let kept: Int
     let threshold: Float
 
-    var filtered: Int { max(0, totalCandidates - kept) }
+    var dropped: Int { max(0, totalCandidates - kept) }
 }
 
 struct PoseLandmarkNormalizer {

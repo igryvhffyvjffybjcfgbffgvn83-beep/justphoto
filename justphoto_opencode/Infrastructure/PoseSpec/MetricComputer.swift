@@ -40,7 +40,10 @@ final class MetricComputer {
         guard let obs = context.pose?.rawObservation?.observation else {
             let thr = String(format: "%.2f", minConf)
             print("PoseSpecLandmarksDump: (no_pose)")
-            print("BodyPointsStats: Total=0 Filtered=0 Threshold=\(thr)")
+            print("BodyPointsStats: Total=0 Kept=0 Threshold=\(thr)")
+
+            let r = BodyBBoxResult.invalid(reason: .insufficientPoints, pointCountUsed: 0)
+            print("BodyBBoxDump: Valid=false | Reason=\(r.invalidReason?.rawValue ?? "unknown") | Pts=0")
             return
         }
 
@@ -68,7 +71,22 @@ final class MetricComputer {
         }
 
         let thr = String(format: "%.2f", Double(stats.threshold))
-        print("BodyPointsStats: Total=\(stats.totalCandidates) Filtered=\(stats.filtered) Threshold=\(thr)")
+        print("BodyPointsStats: Total=\(stats.totalCandidates) Kept=\(stats.kept) Threshold=\(thr) Dropped=\(stats.dropped)")
+
+        let bbox = BodyBBoxBuilder.build(from: Array(points.values))
+        if bbox.isValid {
+            let rect = bbox.rect
+            let rectStr = String(
+                format: "[%.3f, %.3f, %.3f, %.3f]",
+                rect.minX, rect.minY, rect.maxX, rect.maxY
+            )
+            let centerStr = String(format: "(%.3f, %.3f)", Double(bbox.center.x), Double(bbox.center.y))
+            print("BodyBBoxDump: Valid=true | Pts=\(bbox.pointCountUsed) | Rect=\(rectStr) | Center=\(centerStr)")
+        } else {
+            print(
+                "BodyBBoxDump: Valid=false | Reason=\(bbox.invalidReason?.rawValue ?? "unknown") | Pts=\(bbox.pointCountUsed)"
+            )
+        }
     }
 
     private func loadMinLandmarkConfidence() -> Float? {
