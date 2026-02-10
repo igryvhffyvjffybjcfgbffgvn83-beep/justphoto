@@ -511,6 +511,9 @@ struct CameraScreen: View {
             try PoseSpecValidator.validateBindingAliasesMinimalSet(spec)
             try PoseSpecValidator.validateRoisDictionary(spec)
             poseSpecValid = true
+
+            // M6.10 Phase 1: Ensure MetricComputer contract is initialized (prints counts).
+            _ = MetricComputer.shared
 #if DEBUG
             print("PoseSpec Loaded & Validated")
 #endif

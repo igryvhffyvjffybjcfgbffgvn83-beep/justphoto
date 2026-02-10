@@ -16,7 +16,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "B1A1FFBC2F39C55B006B4753"
+               BlueprintIdentifier = "B1A100952F39DA46006B4753"
                BuildableName = "justphoto_opencodeTests.xctest"
                BlueprintName = "justphoto_opencodeTests"
                ReferencedContainer = "container:justphoto_opencode.xcodeproj">
