@@ -139,6 +139,9 @@ M4.4 (Workset full flow):
   - Cue evaluator (M6.12 Phase A):
     - `justphoto_opencode/Infrastructure/PoseSpec/CueEvaluator.swift` evaluates cue thresholds (noRef/withRef) and returns a single level (hard > warn > enter > exit > none).
     - `justphoto_opencode/Features/Settings/DebugToolsScreen.swift` includes a debug injection button for stateless evaluation (FRAME_MOVE_LEFT_HARD).
+  - Cue stability (M6.12 Phase B):
+    - `justphoto_opencode/Infrastructure/PoseSpec/CueStabilityLayer.swift` applies frame-count stability (hard/exit require 2 consecutive frames).
+    - `justphoto_opencode/Features/Settings/DebugToolsScreen.swift` prints `stableFrameCount` and `stabilityState` for injected evaluation.
 
 6) Prompt System (L1/L2/L3)
 - Centralized, contract-driven prompt presenter (Toast/Banner/Modal) with mutual exclusion and throttling.

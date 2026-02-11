@@ -151,6 +151,7 @@ Notes / Known limitations (track for later milestones):
 - [x] M6.11-4 Thermal degradation hook (pause T1, T0 -> 8Hz)
 - [x] M6.11-5 TierScheduler observability (1Hz aggregate perf logs)
 - [x] M6.12 Create CueEvaluator file (enter/warn/hard/exit)
+- [x] M6.12 Phase B — Cue Stability Layer
 - [ ] M6.13 Create CueSelector file (priority+severity+mutex per PoseSpec.defaults.selection)
 - [ ] M6.14 Create AntiJitterGate file (persistFrames/minHoldMs/cooldownMs)
 - [ ] M6.15 Create PraiseController file (PoseSpec.praisePolicy)

@@ -21,6 +21,7 @@ struct DebugToolsScreen: View {
     @State private var m4CleanupTestItemId: String = ""
 
     @State private var showingViewerDebug: Bool = false
+    private static let cueStabilityLayer = CueStabilityLayer()
 
     var body: some View {
 #if false
@@ -1374,16 +1375,21 @@ struct DebugToolsScreen: View {
                         showAlert = true
                         return
                     }
+                    let stable = DebugToolsScreen.cueStabilityLayer.apply(result)
                     print("CueEvalDebug: cueId=\(result.cueId)")
                     print("CueEvalDebug: level=\(result.level.rawValue)")
                     print("CueEvalDebug: matchedThresholdId=\(result.matchedThresholdId ?? "nil")")
                     print("CueEvalDebug: usedRefMode=\(result.usedRefMode.rawValue)")
+                    print("CueStability: stableFrameCount=\(stable.stableFrameCount)")
+                    print("CueStability: stabilityState=\(stable.stabilityState.rawValue)")
                     statusText = """
                     InjectMetricCase: FRAME_MOVE_LEFT_HARD
                     cueId=\(result.cueId)
                     level=\(result.level.rawValue)
                     matchedThresholdId=\(result.matchedThresholdId ?? "nil")
                     usedRefMode=\(result.usedRefMode.rawValue)
+                    stableFrameCount=\(stable.stableFrameCount)
+                    stabilityState=\(stable.stabilityState.rawValue)
                     """
                     statusIsError = false
                     alertTitle = "InjectMetricCase"
