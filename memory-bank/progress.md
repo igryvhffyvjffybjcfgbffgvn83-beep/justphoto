@@ -145,6 +145,7 @@ Notes / Known limitations (track for later milestones):
 - [x] M6.8 Create VisionPipeline files (pose + face)
 - [x] M6.9 Create ROIComputer file (faceROI/eyeROI/bgROI)
 - [x] M6.10 Create MetricComputer file (only metrics needed by PoseSpec v1.1.4)
+- [x] M6.10 Phase 3: Implement T0 metrics + availability diagnostics
 - [ ] M6.11 Create TierScheduler file (T0 15Hz / T1 2Hz)
 - [ ] M6.12 Create CueEvaluator file (enter/warn/hard/exit)
 - [ ] M6.13 Create CueSelector file (priority+severity+mutex per PoseSpec.defaults.selection)
