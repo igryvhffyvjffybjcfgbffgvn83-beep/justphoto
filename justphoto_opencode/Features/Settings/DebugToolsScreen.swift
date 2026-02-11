@@ -1365,6 +1365,18 @@ struct DebugToolsScreen: View {
             }
 
             Section("Diagnostics") {
+                Button("CancelSemanticsProbe") {
+                    WarmupTracker.debugStartCancelProbe()
+                    CaptureCoordinator.shared.debugCancelDeadlineProbe()
+                    Task { await AlbumAddRetryScheduler.shared.debugCancelProbe() }
+                    print("CancelSemanticsProbe: started")
+                    statusText = "CancelSemanticsProbe: started\n\nCheck console for WarmupCancelProbe/CaptureCancelProbe/AlbumAutoRetryCancelProbe logs."
+                    statusIsError = false
+                    alertTitle = "CancelSemanticsProbe"
+                    alertMessage = "Started cancellation probes."
+                    showAlert = true
+                }
+
                 Button("InjectMetricCase: FRAME_MOVE_LEFT_HARD") {
                     guard let result = CueEvaluatorDebug.injectMetricCase("FRAME_MOVE_LEFT_HARD") else {
                         print("InjectMetricCase: FAILED")

@@ -37,6 +37,10 @@ final class WarmupTracker: ObservableObject {
     private var failTask: Task<Void, Never>?
     private var readyTask: Task<Void, Never>?
 
+#if DEBUG
+    private static var debugProbeTracker: WarmupTracker?
+#endif
+
     func startIfNeeded(simulatedReadyDelaySec: Double) {
         switch phase {
         case .idle, .ready:
@@ -52,7 +56,12 @@ final class WarmupTracker: ObservableObject {
 
         // PRD: upgrade message at 3s.
         upgradeTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            do {
+                try await Task.sleep(nanoseconds: 3_000_000_000)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
             await MainActor.run {
                 guard let self else { return }
                 guard self.phase == .warming else { return }
@@ -62,7 +71,12 @@ final class WarmupTracker: ObservableObject {
 
         // PRD: hard fail at 8s.
         failTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 8_000_000_000)
+            do {
+                try await Task.sleep(nanoseconds: 8_000_000_000)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
             await MainActor.run {
                 guard let self else { return }
                 guard self.phase != .ready else { return }
@@ -79,7 +93,12 @@ final class WarmupTracker: ObservableObject {
 
         let ns = UInt64(min(120.0, simulatedReadyDelaySec) * 1_000_000_000)
         readyTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: ns)
+            do {
+                try await Task.sleep(nanoseconds: ns)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
             await MainActor.run {
                 guard let self else { return }
                 guard self.phase != .failed else { return }
@@ -102,4 +121,45 @@ final class WarmupTracker: ObservableObject {
         failTask = nil
         readyTask = nil
     }
+
+#if DEBUG
+    static func debugStartCancelProbe() {
+        let tracker = WarmupTracker()
+        debugProbeTracker = tracker
+
+        print("WarmupCancelProbe: start")
+        tracker.start(simulatedReadyDelaySec: 5.0)
+
+        Task { @MainActor in
+            do {
+                try await Task.sleep(nanoseconds: 200_000_000)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            tracker.stop()
+            print("WarmupCancelProbe: stop")
+        }
+
+        Task { @MainActor in
+            do {
+                try await Task.sleep(nanoseconds: 4_000_000_000)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            print("WarmupCancelProbe: phase_after_4s=\(tracker.phase.rawValue)")
+        }
+
+        Task { @MainActor in
+            do {
+                try await Task.sleep(nanoseconds: 9_000_000_000)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            print("WarmupCancelProbe: phase_after_9s=\(tracker.phase.rawValue)")
+        }
+    }
+#endif
 }

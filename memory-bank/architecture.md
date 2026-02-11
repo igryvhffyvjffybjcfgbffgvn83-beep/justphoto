@@ -142,6 +142,11 @@ M4.4 (Workset full flow):
   - Cue stability (M6.12 Phase B):
     - `justphoto_opencode/Infrastructure/PoseSpec/CueStabilityLayer.swift` applies frame-count stability (hard/exit require 2 consecutive frames).
     - `justphoto_opencode/Features/Settings/DebugToolsScreen.swift` prints `stableFrameCount` and `stabilityState` for injected evaluation.
+  - Cancel semantics probe (M6.x):
+    - `justphoto_opencode/Infrastructure/Camera/WarmupState.swift` adds a DEBUG-only cancel probe to verify warmup cancellation safety.
+    - `justphoto_opencode/Infrastructure/Capture/CaptureCoordinator.swift` adds a DEBUG-only cancel probe for deadline cancellation.
+    - `justphoto_opencode/Infrastructure/Capture/AlbumAddRetryScheduler.swift` adds a DEBUG-only cancel probe for retry cancellation.
+    - `justphoto_opencode/Features/Settings/DebugToolsScreen.swift` exposes `CancelSemanticsProbe` to run all probes.
 
 6) Prompt System (L1/L2/L3)
 - Centralized, contract-driven prompt presenter (Toast/Banner/Modal) with mutual exclusion and throttling.

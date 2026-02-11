@@ -57,6 +57,25 @@ final class CaptureCoordinator {
     func abandonItem(itemId: String) async -> Bool {
         await pipeline.abandonItem(itemId: itemId)
     }
+
+#if DEBUG
+    func debugCancelDeadlineProbe() {
+        Task {
+            JPDebugPrint("CaptureCancelProbe: scheduled")
+            let probe = Task {
+                do {
+                    try await Task.sleep(nanoseconds: 1_500_000_000)
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled else { return }
+                JPDebugPrint("CaptureCancelProbeFired")
+            }
+            probe.cancel()
+            JPDebugPrint("CaptureCancelProbe: cancelled")
+        }
+    }
+#endif
 }
 
 // Actor boundary ensures a single serialized pipeline owner.
@@ -79,7 +98,12 @@ private actor CapturePipeline {
         await ThumbnailPipeline.shared.requestThumbnail(itemId: summary.itemId)
 
         let deadlineTask = Task {
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            do {
+                try await Task.sleep(nanoseconds: 2_000_000_000)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
             await handleCaptureDataDeadline(itemId: summary.itemId)
         }
 
@@ -198,7 +222,12 @@ private actor CapturePipeline {
         }
 
         // M4.13: Retry once after 500ms if first fetch is empty.
-        try? await Task.sleep(nanoseconds: 500_000_000)
+        do {
+            try await Task.sleep(nanoseconds: 500_000_000)
+        } catch {
+            return
+        }
+        guard !Task.isCancelled else { return }
 
         let retryCount = PhotoLibraryWriter.shared.fetchAssetCount(localIdentifier: assetId)
         let elapsedMs = Int(max(0, Date().timeIntervalSince(verificationStart) * 1000))

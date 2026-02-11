@@ -12,6 +12,10 @@ actor AlbumAddRetryScheduler {
 
     private init() {}
 
+#if DEBUG
+    private let debugProbeId = "debug_cancel_probe_album_retry"
+#endif
+
     func kick() async {
         let candidates: [SessionRepository.AlbumAddRetryCandidate] = await MainActor.run {
             (try? SessionRepository.shared.albumAddFailedAutoRetryCandidates(maxAttempts: maxAttempts)) ?? []
@@ -49,12 +53,18 @@ actor AlbumAddRetryScheduler {
         JPDebugPrint("AlbumAutoRetryScheduled: item_id=\(itemId) retry_count=\(candidate.retryCount) delay_ms=\(delayMs)")
 
         tasks[itemId] = Task {
-            try? await Task.sleep(nanoseconds: UInt64(delayMs) * 1_000_000)
+            do {
+                try await Task.sleep(nanoseconds: UInt64(delayMs) * 1_000_000)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
             await attempt(itemId: itemId, assetId: candidate.assetId, expectedRetryCount: candidate.retryCount)
         }
     }
 
     private func attempt(itemId: String, assetId: String, expectedRetryCount: Int) async {
+        guard !Task.isCancelled else { return }
         tasks[itemId] = nil
 
         let current: SessionRepository.AlbumAddRetryCandidate? = await MainActor.run {
@@ -123,4 +133,30 @@ actor AlbumAddRetryScheduler {
         if retryCount >= backoffMs.count { return backoffMs[backoffMs.count - 1] }
         return backoffMs[retryCount]
     }
+
+#if DEBUG
+    func debugCancelProbe() async {
+        let id = debugProbeId
+        tasks[id]?.cancel()
+        tasks[id] = Task {
+            do {
+                try await Task.sleep(nanoseconds: 2_000_000_000)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            JPDebugPrint("AlbumAutoRetryCancelProbeFired: item_id=\(id)")
+        }
+
+        do {
+            try await Task.sleep(nanoseconds: 100_000_000)
+        } catch {
+            return
+        }
+        guard !Task.isCancelled else { return }
+
+        cancel(itemIds: [id])
+        JPDebugPrint("AlbumAutoRetryCancelProbeCancelled: item_id=\(id)")
+    }
+#endif
 }

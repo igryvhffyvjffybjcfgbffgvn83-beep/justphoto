@@ -39,7 +39,7 @@
 
 ## ✅ Step 4: Verification Contract
 明确告诉我如何验收这一步是否成功：
-例如：‘运行项目，控制台应输出 Camera Initialized的每一个详细步骤’）
+- **Log Evidence**: 规定代码必须打印的特定日志格式（例如：`DEBUG_TASK: [Camera Initialized] Input=... Output=...`，必须详细到每一步骤）。
 - **Behavior**: 描述运行项目后的预期行为。
 
 # Strict Constraints 🚨
