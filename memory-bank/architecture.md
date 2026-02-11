@@ -136,6 +136,9 @@ M4.4 (Workset full flow):
     - `justphoto_opencode/Features/Camera/CameraScreen.swift` sends camera frames to `TierScheduler` (O(1) cache in the frame callback).
     - Thermal degradation: when system thermal state >= serious, pause T1 and drop T0 target to 8Hz (restores when thermal recovers).
     - Observability: `TierScheduler` prints 1Hz aggregate logs with ticks/s, avg/max durations, and in-flight skip counts.
+  - Cue evaluator (M6.12 Phase A):
+    - `justphoto_opencode/Infrastructure/PoseSpec/CueEvaluator.swift` evaluates cue thresholds (noRef/withRef) and returns a single level (hard > warn > enter > exit > none).
+    - `justphoto_opencode/Features/Settings/DebugToolsScreen.swift` includes a debug injection button for stateless evaluation (FRAME_MOVE_LEFT_HARD).
 
 6) Prompt System (L1/L2/L3)
 - Centralized, contract-driven prompt presenter (Toast/Banner/Modal) with mutual exclusion and throttling.

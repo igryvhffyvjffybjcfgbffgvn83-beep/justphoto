@@ -1364,6 +1364,33 @@ struct DebugToolsScreen: View {
             }
 
             Section("Diagnostics") {
+                Button("InjectMetricCase: FRAME_MOVE_LEFT_HARD") {
+                    guard let result = CueEvaluatorDebug.injectMetricCase("FRAME_MOVE_LEFT_HARD") else {
+                        print("InjectMetricCase: FAILED")
+                        statusText = "InjectMetricCase: FAILED"
+                        statusIsError = true
+                        alertTitle = "InjectMetricCase"
+                        alertMessage = "No result"
+                        showAlert = true
+                        return
+                    }
+                    print("CueEvalDebug: cueId=\(result.cueId)")
+                    print("CueEvalDebug: level=\(result.level.rawValue)")
+                    print("CueEvalDebug: matchedThresholdId=\(result.matchedThresholdId ?? "nil")")
+                    print("CueEvalDebug: usedRefMode=\(result.usedRefMode.rawValue)")
+                    statusText = """
+                    InjectMetricCase: FRAME_MOVE_LEFT_HARD
+                    cueId=\(result.cueId)
+                    level=\(result.level.rawValue)
+                    matchedThresholdId=\(result.matchedThresholdId ?? "nil")
+                    usedRefMode=\(result.usedRefMode.rawValue)
+                    """
+                    statusIsError = false
+                    alertTitle = "InjectMetricCase"
+                    alertMessage = "Printed CueEvaluator debug output."
+                    showAlert = true
+                }
+
                 Button {
                     guard !isRunning else { return }
                     isRunning = true
