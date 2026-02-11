@@ -10,6 +10,9 @@ struct ROISet: Sendable {
     let bodyROI: CGRect?
     let eyeROIs: [CGRect]
     let bgRingRects: [CGRect]
+    // Standardized ROI dictionary for PoseSpec consumers (faceROI/eyeROI/bgROI).
+    // Note: bgROI is composite (ring); represented as .null here.
+    let roiDict: [String: CGRect]
 }
 
 enum ROIComputer {
@@ -131,7 +134,12 @@ enum ROIComputer {
             let bg = computeBgRingRects(frame: unit, minus: faceROI)
                 .map { clampToUnit($0, unit: unit) }
                 .filter { !$0.isNull && !$0.isEmpty && $0.width > 0.0001 && $0.height > 0.0001 }
-            return ROISet(faceROI: faceROI, bodyROI: bodyROI, eyeROIs: [], bgRingRects: bg)
+            let roiDict = buildROIDict(faceROI: faceROI, eyeROIs: [], bgRingRects: bg)
+            #if DEBUG
+            let hasEyePoints = (leftEye != nil || rightEye != nil)
+            maybePrintROIDebug(faceROI: faceROI, eyeROIs: [], bgRingRects: bg, eyeHadPoints: hasEyePoints)
+            #endif
+            return ROISet(faceROI: faceROI, bodyROI: bodyROI, eyeROIs: [], bgRingRects: bg, roiDict: roiDict)
         }
 
         if keepLeft, let leftEye {
@@ -153,11 +161,30 @@ enum ROIComputer {
             .map { clampToUnit($0, unit: unit) }
             .filter { !$0.isNull && !$0.isEmpty && $0.width > 0.0001 && $0.height > 0.0001 }
 
-        return ROISet(faceROI: faceROI, bodyROI: bodyROI, eyeROIs: eyeROIs, bgRingRects: bg)
+        let roiDict = buildROIDict(faceROI: faceROI, eyeROIs: eyeROIs, bgRingRects: bg)
+        #if DEBUG
+        maybePrintROIDebug(faceROI: faceROI, eyeROIs: eyeROIs, bgRingRects: bg, eyeHadPoints: true)
+        #endif
+        return ROISet(faceROI: faceROI, bodyROI: bodyROI, eyeROIs: eyeROIs, bgRingRects: bg, roiDict: roiDict)
     }
 
     static func compute(face: VisionFaceResult?) -> ROISet? {
         compute(pose: (nil as VisionPoseResult?), face: face)
+    }
+
+    private static func buildROIDict(faceROI: CGRect, eyeROIs: [CGRect], bgRingRects: [CGRect]) -> [String: CGRect] {
+        var dict: [String: CGRect] = [:]
+        dict["faceROI"] = faceROI
+        dict["eyeROI"] = unionOrNull(eyeROIs)
+        // bgROI is a composite ring (frame minus faceROI); cannot be represented as a single rect.
+        dict["bgROI"] = .null
+        _ = bgRingRects
+        return dict
+    }
+
+    private static func unionOrNull(_ rects: [CGRect]) -> CGRect {
+        guard let first = rects.first else { return .null }
+        return rects.dropFirst().reduce(first) { $0.union($1) }
     }
 
     private static func shouldKeepEyeLandmark(
@@ -200,10 +227,12 @@ enum ROIComputer {
         return hasExplicitConfidence
     }
 
-    #if DEBUG
+#if DEBUG
     private static var lastEyeDetectiveLogTsMs: Int = 0
 
     private static var lastROILogTsMs: Int = 0
+
+    private static var lastROIDebugLogTsMs: Int = 0
 
     private static func maybePrintROILog(bodyRaw: CGRect?, bodyClamped: CGRect?, validCount: Int, totalCount: Int) {
         guard Thread.isMainThread else { return }
@@ -219,6 +248,32 @@ enum ROIComputer {
         }
 
         print("DEBUG_ROI: BodyRaw=\(rectStr(bodyRaw)) -> Clamped=\(rectStr(bodyClamped)) validJoints=\(validCount)/\(totalCount)")
+    }
+
+    private static func maybePrintROIDebug(
+        faceROI: CGRect,
+        eyeROIs: [CGRect],
+        bgRingRects: [CGRect],
+        eyeHadPoints: Bool
+    ) {
+        guard Thread.isMainThread else { return }
+        let tsMs = Int(Date().timeIntervalSince1970 * 1000)
+        if tsMs - lastROIDebugLogTsMs < 1000 {
+            return
+        }
+        lastROIDebugLogTsMs = tsMs
+
+        let faceStatus = (!faceROI.isNull && !faceROI.isEmpty) ? "Valid" : "Invalid"
+        let eyeStatus: String
+        if !eyeROIs.isEmpty {
+            eyeStatus = "Valid"
+        } else if eyeHadPoints {
+            eyeStatus = "Unavailable(LowConf)"
+        } else {
+            eyeStatus = "Unavailable(Missing)"
+        }
+        let bgStatus = bgRingRects.isEmpty ? "Unavailable" : "Valid"
+        print("ROI Debug: face=\(faceStatus) eye=\(eyeStatus) bg=\(bgStatus)")
     }
 
     private static func maybePrintFaceClampLog(faceRaw: CGRect, faceClamped: CGRect) {

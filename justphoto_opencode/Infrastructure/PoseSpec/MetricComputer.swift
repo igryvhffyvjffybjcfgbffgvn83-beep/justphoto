@@ -37,6 +37,7 @@ final class MetricComputer {
     static let shared = MetricComputer()
 
     private let poseNormalizer = PoseLandmarkNormalizer()
+    private let frameMetricComputer = FrameMetricComputer()
     private var cachedMinLandmarkConfidence: Float? = nil
 
     private init() {
@@ -51,6 +52,7 @@ final class MetricComputer {
         var outputs: [MetricKey: MetricOutput] = [:]
         outputs.merge(computeBodyMetrics(context: context), uniquingKeysWith: { _, rhs in rhs })
         outputs.merge(computeFaceMetrics(context: context), uniquingKeysWith: { _, rhs in rhs })
+        outputs.merge(computeFrameMetrics(context: context), uniquingKeysWith: { _, rhs in rhs })
 
         #if DEBUG
         printMetricOutputs(outputs)
@@ -192,6 +194,51 @@ final class MetricComputer {
         } else {
             out[.noseToChinRatio] = .unavailable(.missingLandmark)
         }
+
+        return out
+    }
+
+    private func computeFrameMetrics(context: MetricContext) -> [MetricKey: MetricOutput] {
+        var out: [MetricKey: MetricOutput] = [:]
+
+        #if DEBUG
+        print("DEBUG_T1: Checking T1 conditions...")
+        #endif
+
+        guard let pixelBuffer = context.pixelBuffer else {
+            #if DEBUG
+            print("DEBUG_T1: Buffer is nil!")
+            #endif
+            out[.faceLumaMean] = .unavailable(.missingLandmark)
+            return out
+        }
+        guard let rois = context.rois ?? ROIComputer.compute(pose: context.pose, face: context.face) else {
+            #if DEBUG
+            print("DEBUG_T1: ROI set is nil!")
+            #endif
+            out[.faceLumaMean] = .unavailable(.missingLandmark)
+            return out
+        }
+
+        let faceROI = rois.roiDict["faceROI"] ?? .null
+        guard !faceROI.isNull, !faceROI.isEmpty else {
+            #if DEBUG
+            print("DEBUG_T1: faceROI invalid")
+            #endif
+            out[.faceLumaMean] = .unavailable(.invalidBBox)
+            return out
+        }
+
+        guard let rawMean = frameMetricComputer.computeFaceLumaMean(pixelBuffer: pixelBuffer, faceROI: faceROI) else {
+            return out
+        }
+
+        out[.faceLumaMean] = .available(rawMean)
+
+        #if DEBUG
+        let rawStr = String(format: "%.3f", rawMean)
+        print("T1FaceLuma: raw=\(rawStr) error=na")
+        #endif
 
         return out
     }

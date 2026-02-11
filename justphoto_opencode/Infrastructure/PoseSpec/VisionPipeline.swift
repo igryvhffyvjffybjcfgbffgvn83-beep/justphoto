@@ -378,12 +378,14 @@ final class VisionPipelineController: ObservableObject {
             // M6.10 Phase 1: dump normalized pose landmarks each processed frame.
             // NOTE: do not do any metric math yet.
             #if DEBUG
+            let rois = ROIComputer.compute(pose: r.pose, face: r.face)
+            print("DEBUG_T1: Context has buffer? true rois? \((rois != nil) ? "true" : "false")")
             _ = MetricComputer.shared.computeMetrics(
                 context: MetricContext(
                     pose: r.pose,
                     face: r.face,
-                    rois: nil,
-                    pixelBuffer: nil,
+                    rois: rois,
+                    pixelBuffer: pixelBuffer,
                     orientation: orientation
                 )
             )

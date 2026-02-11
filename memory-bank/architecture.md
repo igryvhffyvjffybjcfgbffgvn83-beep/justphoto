@@ -128,6 +128,9 @@ M4.4 (Workset full flow):
   - ROI computer (M6.9):
     - `justphoto_opencode/Infrastructure/PoseSpec/ROIComputer.swift` computes `faceROI` (padded bbox), `eyeROI` (from eye centers + inter-ocular distance; requires eyes), and `bgROI` as a 4-rect ring (`frame - faceROI`).
     - `justphoto_opencode/Infrastructure/Camera/CameraPreviewView.swift` overlays ROI rectangles (debug visualization) aligned to the preview layer.
+  - T1 frame metrics (M6.10 Phase 4):
+    - `justphoto_opencode/Infrastructure/PoseSpec/FrameMetricComputer.swift` computes pixel metrics (e.g. `faceLumaMean`) from `CVPixelBuffer` via Accelerate/vImage with 2Hz throttling.
+    - `justphoto_opencode/Infrastructure/PoseSpec/MetricComputer.swift` merges T1 outputs; `VisionPipeline` injects `pixelBuffer` and ROIs into `MetricContext`.
 
 6) Prompt System (L1/L2/L3)
 - Centralized, contract-driven prompt presenter (Toast/Banner/Modal) with mutual exclusion and throttling.
