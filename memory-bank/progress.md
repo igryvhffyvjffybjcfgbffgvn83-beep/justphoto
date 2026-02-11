@@ -148,6 +148,8 @@ Notes / Known limitations (track for later milestones):
 - [x] M6.10 Phase 3: Implement T0 metrics + availability diagnostics
 - [x] M6.10-Phase4 Hotfix: T1 FaceLuma data flow + logs
 - [x] M6.11 Create TierScheduler file (T0 15Hz / T1 2Hz)
+- [x] M6.11-4 Thermal degradation hook (pause T1, T0 -> 8Hz)
+- [x] M6.11-5 TierScheduler observability (1Hz aggregate perf logs)
 - [ ] M6.12 Create CueEvaluator file (enter/warn/hard/exit)
 - [ ] M6.13 Create CueSelector file (priority+severity+mutex per PoseSpec.defaults.selection)
 - [ ] M6.14 Create AntiJitterGate file (persistFrames/minHoldMs/cooldownMs)

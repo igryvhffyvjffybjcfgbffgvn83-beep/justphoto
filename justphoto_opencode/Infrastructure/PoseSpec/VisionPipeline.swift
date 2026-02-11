@@ -399,27 +399,66 @@ final class TierScheduler: ObservableObject {
     private let t0Gate = InFlightGate()
     private let t1Gate = InFlightGate()
 
+    private enum Tier {
+        case t0
+        case t1
+    }
+
     private let t0Queue = DispatchQueue(label: "justphoto.tier.t0_queue", qos: .userInitiated)
     private let t1Queue = DispatchQueue(label: "justphoto.tier.t1_queue", qos: .utility)
     private let t0TimerQueue = DispatchQueue(label: "justphoto.tier.t0_timer", qos: .utility)
     private let t1TimerQueue = DispatchQueue(label: "justphoto.tier.t1_timer", qos: .utility)
+    private let statsTimerQueue = DispatchQueue(label: "justphoto.tier.stats_timer", qos: .utility)
 
     private var t0Timer: DispatchSourceTimer? = nil
     private var t1Timer: DispatchSourceTimer? = nil
+    private var statsTimer: DispatchSourceTimer? = nil
+
+    private let timerLock = NSLock()
+    private let stateLock = NSLock()
+
+    private let t0HzNormal: Double = 15.0
+    private let t0HzDegraded: Double = 8.0
+    private var currentT0IntervalNs: Int = 0
+    private var activeT0IntervalNs: Int = 0
+    private var t1Enabled: Bool = true
+
+    private var currentThermalState: ProcessInfo.ThermalState = .nominal
+    private var isThermalDegraded: Bool = false
+    private var thermalObserver: NSObjectProtocol? = nil
 
     private var lastConsolePrintTsMs: Int = 0
 
     #if DEBUG
-    private let debugLock = NSLock()
-    private var debugLastPrintTsMs: Int = 0
-    private var debugT0Ticks: Int = 0
-    private var debugT1Ticks: Int = 0
-    private var debugT0Skipped: Int = 0
-    private var debugT1Skipped: Int = 0
+    private struct TierStats {
+        var t0Ticks: Int = 0
+        var t1Ticks: Int = 0
+        var t0SkippedInFlight: Int = 0
+        var t1SkippedInFlight: Int = 0
+        var t0DurationSumNs: UInt64 = 0
+        var t1DurationSumNs: UInt64 = 0
+        var t0DurationMaxNs: UInt64 = 0
+        var t1DurationMaxNs: UInt64 = 0
+        var t0DurationSamples: Int = 0
+        var t1DurationSamples: Int = 0
+    }
+
+    private let statsLock = NSLock()
+    private var stats = TierStats()
     #endif
 
     init() {
+        let thermalState = ProcessInfo.processInfo.thermalState
+        let degraded = thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
+        currentThermalState = thermalState
+        isThermalDegraded = degraded
+        currentT0IntervalNs = intervalNs(forHz: degraded ? t0HzDegraded : t0HzNormal)
+        t1Enabled = !degraded
         startTimers()
+        #if DEBUG
+        startStatsTimer()
+        #endif
+        startThermalMonitoring()
     }
 
     func offer(pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation) {
@@ -432,41 +471,23 @@ final class TierScheduler: ObservableObject {
 
     deinit {
         stopTimers()
+        #if DEBUG
+        stopStatsTimer()
+        #endif
+        stopThermalMonitoring()
     }
 
     private func startTimers() {
-        let t0IntervalNs = Int((1_000_000_000.0 / 15.0).rounded())
-        let t1IntervalNs = Int((1_000_000_000.0 / 2.0).rounded())
-
-        let t0 = DispatchSource.makeTimerSource(queue: t0TimerQueue)
-        t0.schedule(
-            deadline: .now() + .nanoseconds(t0IntervalNs),
-            repeating: .nanoseconds(t0IntervalNs),
-            leeway: .milliseconds(4)
-        )
-        t0.setEventHandler { [weak self] in
-            self?.handleT0Tick()
-        }
-        t0.resume()
-        t0Timer = t0
-
-        let t1 = DispatchSource.makeTimerSource(queue: t1TimerQueue)
-        t1.schedule(
-            deadline: .now() + .nanoseconds(t1IntervalNs),
-            repeating: .nanoseconds(t1IntervalNs),
-            leeway: .milliseconds(8)
-        )
-        t1.setEventHandler { [weak self] in
-            self?.handleT1Tick()
-        }
-        t1.resume()
-        t1Timer = t1
+        configureTimers(t0IntervalNs: currentT0IntervalNs, t1Enabled: t1Enabled)
     }
 
     private func stopTimers() {
+        timerLock.lock()
+        defer { timerLock.unlock() }
         t0Timer?.setEventHandler {}
         t0Timer?.cancel()
         t0Timer = nil
+        activeT0IntervalNs = 0
 
         t1Timer?.setEventHandler {}
         t1Timer?.cancel()
@@ -475,20 +496,17 @@ final class TierScheduler: ObservableObject {
 
     private func handleT0Tick() {
         guard let frame = latestFrameSnapshot() else {
-            #if DEBUG
-            debugRecord(t0Skipped: true)
-            #endif
             return
         }
         // In-flight gate: if the previous T0 task is still running, skip this tick.
         guard t0Gate.tryEnter() else {
             #if DEBUG
-            debugRecord(t0Skipped: true)
+            recordSkipInFlight(tier: .t0)
             #endif
             return
         }
         #if DEBUG
-        debugRecord(t0Ticked: true)
+        recordTick(tier: .t0)
         #endif
 
         let gate = t0Gate
@@ -496,37 +514,47 @@ final class TierScheduler: ObservableObject {
             defer { gate.exit() }
             guard let self else { return }
 
+            #if DEBUG
+            let startNs = DispatchTime.now().uptimeNanoseconds
+            #endif
+
             // T0: run Vision on the latest frame only.
             let result = self.processVision(frame: frame)
             guard let result else { return }
 
             self.storeLatestVision(pose: result.pose, face: result.face)
             self.publishVision(result: result)
+
+            #if DEBUG
+            let endNs = DispatchTime.now().uptimeNanoseconds
+            self.recordDuration(tier: .t0, ns: endNs - startNs)
+            #endif
         }
     }
 
     private func handleT1Tick() {
         guard let frame = latestFrameSnapshot() else {
-            #if DEBUG
-            debugRecord(t1Skipped: true)
-            #endif
             return
         }
         // In-flight gate: if the previous T1 task is still running, skip this tick.
         guard t1Gate.tryEnter() else {
             #if DEBUG
-            debugRecord(t1Skipped: true)
+            recordSkipInFlight(tier: .t1)
             #endif
             return
         }
         #if DEBUG
-        debugRecord(t1Ticked: true)
+        recordTick(tier: .t1)
         #endif
 
         let gate = t1Gate
         t1Queue.async { [weak self] in
             defer { gate.exit() }
             guard let self else { return }
+
+            #if DEBUG
+            let startNs = DispatchTime.now().uptimeNanoseconds
+            #endif
 
             // T1: use the most recent Vision outputs + latest frame for frame/ROI metrics.
             let (pose, face) = self.latestVisionSnapshot()
@@ -545,6 +573,11 @@ final class TierScheduler: ObservableObject {
                     orientation: frame.orientation
                 )
             )
+
+            #if DEBUG
+            let endNs = DispatchTime.now().uptimeNanoseconds
+            self.recordDuration(tier: .t1, ns: endNs - startNs)
+            #endif
         }
     }
 
@@ -609,30 +642,206 @@ final class TierScheduler: ObservableObject {
     }
 
     #if DEBUG
-    private func debugRecord(
-        t0Ticked: Bool = false,
-        t1Ticked: Bool = false,
-        t0Skipped: Bool = false,
-        t1Skipped: Bool = false
-    ) {
-        debugLock.lock()
-        if t0Ticked { debugT0Ticks += 1 }
-        if t1Ticked { debugT1Ticks += 1 }
-        if t0Skipped { debugT0Skipped += 1 }
-        if t1Skipped { debugT1Skipped += 1 }
-
-        let now = nowMs()
-        if now - debugLastPrintTsMs >= 1000 {
-            debugLastPrintTsMs = now
-            print(
-                "DEBUG_TIER: t0_ticks=\(debugT0Ticks) t1_ticks=\(debugT1Ticks) t0_skipped=\(debugT0Skipped) t1_skipped=\(debugT1Skipped)"
-            )
-            debugT0Ticks = 0
-            debugT1Ticks = 0
-            debugT0Skipped = 0
-            debugT1Skipped = 0
+    private func recordTick(tier: Tier) {
+        statsLock.lock()
+        switch tier {
+        case .t0:
+            stats.t0Ticks += 1
+        case .t1:
+            stats.t1Ticks += 1
         }
-        debugLock.unlock()
+        statsLock.unlock()
+    }
+
+    private func recordSkipInFlight(tier: Tier) {
+        statsLock.lock()
+        switch tier {
+        case .t0:
+            stats.t0SkippedInFlight += 1
+        case .t1:
+            stats.t1SkippedInFlight += 1
+        }
+        statsLock.unlock()
+    }
+
+    private func recordDuration(tier: Tier, ns: UInt64) {
+        statsLock.lock()
+        switch tier {
+        case .t0:
+            stats.t0DurationSumNs += ns
+            stats.t0DurationSamples += 1
+            if ns > stats.t0DurationMaxNs { stats.t0DurationMaxNs = ns }
+        case .t1:
+            stats.t1DurationSumNs += ns
+            stats.t1DurationSamples += 1
+            if ns > stats.t1DurationMaxNs { stats.t1DurationMaxNs = ns }
+        }
+        statsLock.unlock()
+    }
+
+    private func startStatsTimer() {
+        let timer = DispatchSource.makeTimerSource(queue: statsTimerQueue)
+        timer.schedule(
+            deadline: .now() + .seconds(1),
+            repeating: .seconds(1),
+            leeway: .milliseconds(50)
+        )
+        timer.setEventHandler { [weak self] in
+            self?.emitStatsLog()
+        }
+        timer.resume()
+        statsTimer = timer
+    }
+
+    private func stopStatsTimer() {
+        statsTimer?.setEventHandler {}
+        statsTimer?.cancel()
+        statsTimer = nil
+    }
+
+    private func emitStatsLog() {
+        let snapshot: TierStats = {
+            statsLock.lock()
+            defer { statsLock.unlock() }
+            let s = stats
+            stats = TierStats()
+            return s
+        }()
+
+        stateLock.lock()
+        let thermalState = currentThermalState
+        let degraded = isThermalDegraded
+        let t0IntervalNs = currentT0IntervalNs
+        let isT1Enabled = t1Enabled
+        stateLock.unlock()
+
+        let t0AvgMs = snapshot.t0DurationSamples > 0
+            ? (Double(snapshot.t0DurationSumNs) / Double(snapshot.t0DurationSamples)) / 1_000_000.0
+            : 0.0
+        let t1AvgMs = snapshot.t1DurationSamples > 0
+            ? (Double(snapshot.t1DurationSumNs) / Double(snapshot.t1DurationSamples)) / 1_000_000.0
+            : 0.0
+        let t0MaxMs = Double(snapshot.t0DurationMaxNs) / 1_000_000.0
+        let t1MaxMs = Double(snapshot.t1DurationMaxNs) / 1_000_000.0
+        let t0TargetHz = t0IntervalNs > 0 ? (1_000_000_000.0 / Double(t0IntervalNs)) : 0.0
+
+        print(
+            String(
+                format: "DEBUG_TIER_AGG: t0_hz=%d t1_hz=%d t0_avg_ms=%.2f t0_max_ms=%.2f t1_avg_ms=%.2f t1_max_ms=%.2f skippedBecauseInFlight_t0=%d skippedBecauseInFlight_t1=%d thermal=%d degraded=%@ t0_target_hz=%.1f t1_enabled=%@",
+                snapshot.t0Ticks,
+                snapshot.t1Ticks,
+                t0AvgMs,
+                t0MaxMs,
+                t1AvgMs,
+                t1MaxMs,
+                snapshot.t0SkippedInFlight,
+                snapshot.t1SkippedInFlight,
+                thermalState.rawValue,
+                degraded ? "true" : "false",
+                t0TargetHz,
+                isT1Enabled ? "true" : "false"
+            )
+        )
     }
     #endif
+
+    private func startThermalMonitoring() {
+        // Glue: subscribe to system thermal state changes.
+        thermalObserver = NotificationCenter.default.addObserver(
+            forName: ProcessInfo.thermalStateDidChangeNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            self?.applyThermalState(ProcessInfo.processInfo.thermalState)
+        }
+    }
+
+    private func stopThermalMonitoring() {
+        if let obs = thermalObserver {
+            NotificationCenter.default.removeObserver(obs)
+            thermalObserver = nil
+        }
+    }
+
+    private func applyThermalState(_ state: ProcessInfo.ThermalState) {
+        // Glue: map system thermal state to scheduler degradation policy.
+        let degraded = state.rawValue >= ProcessInfo.ThermalState.serious.rawValue
+        let targetHz = degraded ? t0HzDegraded : t0HzNormal
+        let newIntervalNs = intervalNs(forHz: targetHz)
+        let newT1Enabled = !degraded
+
+        stateLock.lock()
+        let prevThermal = currentThermalState
+        let prevDegraded = isThermalDegraded
+        let prevInterval = currentT0IntervalNs
+        let prevT1Enabled = t1Enabled
+
+        currentThermalState = state
+        isThermalDegraded = degraded
+        currentT0IntervalNs = newIntervalNs
+        t1Enabled = newT1Enabled
+        stateLock.unlock()
+
+        if prevInterval != newIntervalNs || prevT1Enabled != newT1Enabled {
+            configureTimers(t0IntervalNs: newIntervalNs, t1Enabled: newT1Enabled)
+        }
+
+        if prevThermal != state || prevDegraded != degraded {
+            #if DEBUG
+            print(
+                "DEBUG_TIER_THERMAL: state=\(state.rawValue) degraded=\(degraded) t0_target_hz=\(String(format: "%.1f", targetHz)) t1_enabled=\(newT1Enabled)"
+            )
+            #endif
+        }
+    }
+
+    private func configureTimers(t0IntervalNs: Int, t1Enabled: Bool) {
+        timerLock.lock()
+        defer { timerLock.unlock() }
+
+        if t0Timer == nil || activeT0IntervalNs != t0IntervalNs {
+            t0Timer?.setEventHandler {}
+            t0Timer?.cancel()
+
+            let t0 = DispatchSource.makeTimerSource(queue: t0TimerQueue)
+            t0.schedule(
+                deadline: .now() + .nanoseconds(t0IntervalNs),
+                repeating: .nanoseconds(t0IntervalNs),
+                leeway: .milliseconds(4)
+            )
+            t0.setEventHandler { [weak self] in
+                self?.handleT0Tick()
+            }
+            t0.resume()
+            t0Timer = t0
+            activeT0IntervalNs = t0IntervalNs
+        }
+
+        if t1Enabled {
+            if t1Timer == nil {
+                let t1IntervalNs = Int((1_000_000_000.0 / 2.0).rounded())
+                let t1 = DispatchSource.makeTimerSource(queue: t1TimerQueue)
+                t1.schedule(
+                    deadline: .now() + .nanoseconds(t1IntervalNs),
+                    repeating: .nanoseconds(t1IntervalNs),
+                    leeway: .milliseconds(8)
+                )
+                t1.setEventHandler { [weak self] in
+                    self?.handleT1Tick()
+                }
+                t1.resume()
+                t1Timer = t1
+            }
+        } else {
+            // Pause T1 entirely under thermal degradation.
+            t1Timer?.setEventHandler {}
+            t1Timer?.cancel()
+            t1Timer = nil
+        }
+    }
+
+    private func intervalNs(forHz hz: Double) -> Int {
+        let clamped = max(0.1, hz)
+        return Int((1_000_000_000.0 / clamped).rounded())
+    }
 }

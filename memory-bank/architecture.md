@@ -134,6 +134,8 @@ M4.4 (Workset full flow):
   - Tier scheduler (M6.11):
     - `justphoto_opencode/Infrastructure/PoseSpec/VisionPipeline.swift` defines `TierScheduler` with a latest-frame gate, T0 (15Hz) + T1 (2Hz) timers, per-tier serial queues, and in-flight skip gates.
     - `justphoto_opencode/Features/Camera/CameraScreen.swift` sends camera frames to `TierScheduler` (O(1) cache in the frame callback).
+    - Thermal degradation: when system thermal state >= serious, pause T1 and drop T0 target to 8Hz (restores when thermal recovers).
+    - Observability: `TierScheduler` prints 1Hz aggregate logs with ticks/s, avg/max durations, and in-flight skip counts.
 
 6) Prompt System (L1/L2/L3)
 - Centralized, contract-driven prompt presenter (Toast/Banner/Modal) with mutual exclusion and throttling.
