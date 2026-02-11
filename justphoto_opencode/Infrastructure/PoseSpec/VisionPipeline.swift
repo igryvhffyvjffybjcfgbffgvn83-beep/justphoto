@@ -354,8 +354,7 @@ actor VisionPipeline {
     // M6.8: Coordinate normalization is centralized in PoseSpecCoordinateNormalizer.
 }
 
-@MainActor
-final class VisionPipelineController: ObservableObject {
+final class TierScheduler: ObservableObject {
     @Published private(set) var poseDetected: Bool = false
     @Published private(set) var faceDetected: Bool = false
     @Published private(set) var lastUpdateTsMs: Int = 0
@@ -366,50 +365,274 @@ final class VisionPipelineController: ObservableObject {
     @Published private(set) var lastPose: VisionPoseResult? = nil
     @Published private(set) var lastFace: VisionFaceResult? = nil
 
-    private var lastConsolePrintTsMs: Int = 0
+    private struct FramePacket {
+        let pixelBuffer: CVPixelBuffer
+        let orientation: CGImagePropertyOrientation
+    }
 
-    func offer(pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation) {
-        Task.detached(priority: .utility) { [weak self] in
-            guard let self else { return }
-            guard let r = await VisionPipeline.shared.process(pixelBuffer: pixelBuffer, orientation: orientation) else {
-                return
-            }
+    private final class InFlightGate {
+        private let lock = NSLock()
+        private var inFlight: Bool = false
 
-            // M6.10 Phase 1: dump normalized pose landmarks each processed frame.
-            // NOTE: do not do any metric math yet.
-            #if DEBUG
-            let rois = ROIComputer.compute(pose: r.pose, face: r.face)
-            print("DEBUG_T1: Context has buffer? true rois? \((rois != nil) ? "true" : "false")")
-            _ = MetricComputer.shared.computeMetrics(
-                context: MetricContext(
-                    pose: r.pose,
-                    face: r.face,
-                    rois: rois,
-                    pixelBuffer: pixelBuffer,
-                    orientation: orientation
-                )
-            )
-            #endif
+        func tryEnter() -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            if inFlight { return false }
+            inFlight = true
+            return true
+        }
 
-            let tsMs = Int(Date().timeIntervalSince1970 * 1000)
-            await MainActor.run {
-                self.poseDetected = r.poseDetected
-                self.faceDetected = r.faceDetected
-                self.lastUpdateTsMs = tsMs
-                self.lastPosePointCount = r.pose?.points.count ?? 0
-                self.lastFaceConfidence = r.face?.faceConfidence ?? 0
-
-                self.lastPose = r.pose
-                self.lastFace = r.face
-
-                #if DEBUG
-                if tsMs - self.lastConsolePrintTsMs >= 1000 {
-                    self.lastConsolePrintTsMs = tsMs
-                    let faceConfStr = String(format: "%.2f", self.lastFaceConfidence)
-                    print("DEBUG_PIPELINE: VisionState poseDetected=\(self.poseDetected) faceDetected=\(self.faceDetected) posePoints=\(self.lastPosePointCount) faceConf=\(faceConfStr)")
-                }
-                #endif
-            }
+        func exit() {
+            lock.lock()
+            inFlight = false
+            lock.unlock()
         }
     }
+
+    private let latestFrameLock = NSLock()
+    private var latestFrame: FramePacket? = nil
+
+    private let latestVisionLock = NSLock()
+    private var latestPoseSnapshot: VisionPoseResult? = nil
+    private var latestFaceSnapshot: VisionFaceResult? = nil
+
+    private let t0Gate = InFlightGate()
+    private let t1Gate = InFlightGate()
+
+    private let t0Queue = DispatchQueue(label: "justphoto.tier.t0_queue", qos: .userInitiated)
+    private let t1Queue = DispatchQueue(label: "justphoto.tier.t1_queue", qos: .utility)
+    private let t0TimerQueue = DispatchQueue(label: "justphoto.tier.t0_timer", qos: .utility)
+    private let t1TimerQueue = DispatchQueue(label: "justphoto.tier.t1_timer", qos: .utility)
+
+    private var t0Timer: DispatchSourceTimer? = nil
+    private var t1Timer: DispatchSourceTimer? = nil
+
+    private var lastConsolePrintTsMs: Int = 0
+
+    #if DEBUG
+    private let debugLock = NSLock()
+    private var debugLastPrintTsMs: Int = 0
+    private var debugT0Ticks: Int = 0
+    private var debugT1Ticks: Int = 0
+    private var debugT0Skipped: Int = 0
+    private var debugT1Skipped: Int = 0
+    #endif
+
+    init() {
+        startTimers()
+    }
+
+    func offer(pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation) {
+        let packet = FramePacket(pixelBuffer: pixelBuffer, orientation: orientation)
+        latestFrameLock.lock()
+        // O(1) overwrite: keep only the latest frame, drop all older frames.
+        latestFrame = packet
+        latestFrameLock.unlock()
+    }
+
+    deinit {
+        stopTimers()
+    }
+
+    private func startTimers() {
+        let t0IntervalNs = Int((1_000_000_000.0 / 15.0).rounded())
+        let t1IntervalNs = Int((1_000_000_000.0 / 2.0).rounded())
+
+        let t0 = DispatchSource.makeTimerSource(queue: t0TimerQueue)
+        t0.schedule(
+            deadline: .now() + .nanoseconds(t0IntervalNs),
+            repeating: .nanoseconds(t0IntervalNs),
+            leeway: .milliseconds(4)
+        )
+        t0.setEventHandler { [weak self] in
+            self?.handleT0Tick()
+        }
+        t0.resume()
+        t0Timer = t0
+
+        let t1 = DispatchSource.makeTimerSource(queue: t1TimerQueue)
+        t1.schedule(
+            deadline: .now() + .nanoseconds(t1IntervalNs),
+            repeating: .nanoseconds(t1IntervalNs),
+            leeway: .milliseconds(8)
+        )
+        t1.setEventHandler { [weak self] in
+            self?.handleT1Tick()
+        }
+        t1.resume()
+        t1Timer = t1
+    }
+
+    private func stopTimers() {
+        t0Timer?.setEventHandler {}
+        t0Timer?.cancel()
+        t0Timer = nil
+
+        t1Timer?.setEventHandler {}
+        t1Timer?.cancel()
+        t1Timer = nil
+    }
+
+    private func handleT0Tick() {
+        guard let frame = latestFrameSnapshot() else {
+            #if DEBUG
+            debugRecord(t0Skipped: true)
+            #endif
+            return
+        }
+        // In-flight gate: if the previous T0 task is still running, skip this tick.
+        guard t0Gate.tryEnter() else {
+            #if DEBUG
+            debugRecord(t0Skipped: true)
+            #endif
+            return
+        }
+        #if DEBUG
+        debugRecord(t0Ticked: true)
+        #endif
+
+        let gate = t0Gate
+        t0Queue.async { [weak self] in
+            defer { gate.exit() }
+            guard let self else { return }
+
+            // T0: run Vision on the latest frame only.
+            let result = self.processVision(frame: frame)
+            guard let result else { return }
+
+            self.storeLatestVision(pose: result.pose, face: result.face)
+            self.publishVision(result: result)
+        }
+    }
+
+    private func handleT1Tick() {
+        guard let frame = latestFrameSnapshot() else {
+            #if DEBUG
+            debugRecord(t1Skipped: true)
+            #endif
+            return
+        }
+        // In-flight gate: if the previous T1 task is still running, skip this tick.
+        guard t1Gate.tryEnter() else {
+            #if DEBUG
+            debugRecord(t1Skipped: true)
+            #endif
+            return
+        }
+        #if DEBUG
+        debugRecord(t1Ticked: true)
+        #endif
+
+        let gate = t1Gate
+        t1Queue.async { [weak self] in
+            defer { gate.exit() }
+            guard let self else { return }
+
+            // T1: use the most recent Vision outputs + latest frame for frame/ROI metrics.
+            let (pose, face) = self.latestVisionSnapshot()
+            let rois = ROIComputer.compute(pose: pose, face: face)
+
+            #if DEBUG
+            print("DEBUG_T1: Context has buffer? true rois? \((rois != nil) ? "true" : "false")")
+            #endif
+
+            _ = MetricComputer.shared.computeMetrics(
+                context: MetricContext(
+                    pose: pose,
+                    face: face,
+                    rois: rois,
+                    pixelBuffer: frame.pixelBuffer,
+                    orientation: frame.orientation
+                )
+            )
+        }
+    }
+
+    private func latestFrameSnapshot() -> FramePacket? {
+        latestFrameLock.lock()
+        defer { latestFrameLock.unlock() }
+        return latestFrame
+    }
+
+    private func storeLatestVision(pose: VisionPoseResult?, face: VisionFaceResult?) {
+        latestVisionLock.lock()
+        latestPoseSnapshot = pose
+        latestFaceSnapshot = face
+        latestVisionLock.unlock()
+    }
+
+    private func latestVisionSnapshot() -> (VisionPoseResult?, VisionFaceResult?) {
+        latestVisionLock.lock()
+        defer { latestVisionLock.unlock() }
+        return (latestPoseSnapshot, latestFaceSnapshot)
+    }
+
+    private func processVision(frame: FramePacket) -> VisionFrameResult? {
+        let semaphore = DispatchSemaphore(value: 0)
+        var output: VisionFrameResult? = nil
+
+        // Bridge async Vision pipeline into the serial T0 queue without blocking UI.
+        Task {
+            output = await VisionPipeline.shared.process(pixelBuffer: frame.pixelBuffer, orientation: frame.orientation)
+            semaphore.signal()
+        }
+
+        semaphore.wait()
+        return output
+    }
+
+    private func publishVision(result: VisionFrameResult) {
+        let tsMs = nowMs()
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.poseDetected = result.poseDetected
+            self.faceDetected = result.faceDetected
+            self.lastUpdateTsMs = tsMs
+            self.lastPosePointCount = result.pose?.points.count ?? 0
+            self.lastFaceConfidence = result.face?.faceConfidence ?? 0
+
+            self.lastPose = result.pose
+            self.lastFace = result.face
+
+            #if DEBUG
+            if tsMs - self.lastConsolePrintTsMs >= 1000 {
+                self.lastConsolePrintTsMs = tsMs
+                let faceConfStr = String(format: "%.2f", self.lastFaceConfidence)
+                print("DEBUG_PIPELINE: VisionState poseDetected=\(self.poseDetected) faceDetected=\(self.faceDetected) posePoints=\(self.lastPosePointCount) faceConf=\(faceConfStr)")
+            }
+            #endif
+        }
+    }
+
+    private func nowMs() -> Int {
+        Int(Date().timeIntervalSince1970 * 1000)
+    }
+
+    #if DEBUG
+    private func debugRecord(
+        t0Ticked: Bool = false,
+        t1Ticked: Bool = false,
+        t0Skipped: Bool = false,
+        t1Skipped: Bool = false
+    ) {
+        debugLock.lock()
+        if t0Ticked { debugT0Ticks += 1 }
+        if t1Ticked { debugT1Ticks += 1 }
+        if t0Skipped { debugT0Skipped += 1 }
+        if t1Skipped { debugT1Skipped += 1 }
+
+        let now = nowMs()
+        if now - debugLastPrintTsMs >= 1000 {
+            debugLastPrintTsMs = now
+            print(
+                "DEBUG_TIER: t0_ticks=\(debugT0Ticks) t1_ticks=\(debugT1Ticks) t0_skipped=\(debugT0Skipped) t1_skipped=\(debugT1Skipped)"
+            )
+            debugT0Ticks = 0
+            debugT1Ticks = 0
+            debugT0Skipped = 0
+            debugT1Skipped = 0
+        }
+        debugLock.unlock()
+    }
+    #endif
 }

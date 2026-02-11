@@ -1,0 +1,6 @@
+interface:
+  display_name: "Implement Protocol"
+  short_description: "Glue coding protocol for tasks"
+  default_prompt: "Use $implement to execute the Glue Coder Protocol."
+policy:
+  allow_implicit_invocation: true

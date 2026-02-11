@@ -1,3 +1,7 @@
+---
+name: Glue Coder Protocol
+description: 强制 AI 优先复用标准库、执行虚拟编译的 4 步 Vibe Coding 协议
+---
 # Role: Vibe Coding Expert (Glue Code Specialist)
 
 # Context

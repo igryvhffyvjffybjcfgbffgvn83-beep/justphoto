@@ -10,7 +10,7 @@ struct CameraScreen: View {
     @StateObject private var warmup = WarmupTracker()
 
     @StateObject private var cameraFrames = CameraFrameSource()
-    @StateObject private var vision = VisionPipelineController()
+    @StateObject private var vision = TierScheduler()
 
     @State private var showingSettings = false
     @State private var showingPaywall = false

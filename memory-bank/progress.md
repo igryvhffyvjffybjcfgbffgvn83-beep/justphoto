@@ -147,7 +147,7 @@ Notes / Known limitations (track for later milestones):
 - [x] M6.10 Create MetricComputer file (only metrics needed by PoseSpec v1.1.4)
 - [x] M6.10 Phase 3: Implement T0 metrics + availability diagnostics
 - [x] M6.10-Phase4 Hotfix: T1 FaceLuma data flow + logs
-- [ ] M6.11 Create TierScheduler file (T0 15Hz / T1 2Hz)
+- [x] M6.11 Create TierScheduler file (T0 15Hz / T1 2Hz)
 - [ ] M6.12 Create CueEvaluator file (enter/warn/hard/exit)
 - [ ] M6.13 Create CueSelector file (priority+severity+mutex per PoseSpec.defaults.selection)
 - [ ] M6.14 Create AntiJitterGate file (persistFrames/minHoldMs/cooldownMs)
