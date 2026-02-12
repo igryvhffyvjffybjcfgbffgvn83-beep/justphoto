@@ -39,6 +39,18 @@ final class MetricComputer {
     private let poseNormalizer = PoseLandmarkNormalizer()
     private let frameMetricComputer = FrameMetricComputer()
     private var cachedMinLandmarkConfidence: Float? = nil
+#if DEBUG
+    private var cachedAntiJitterDefaults: AntiJitterDefaults? = nil
+    private lazy var antiJitterGate: AntiJitterGate = {
+        let defaults = loadAntiJitterDefaults()
+        return AntiJitterGate(
+            persistFrames: defaults?.persistFrames ?? 6,
+            minHoldMs: defaults?.minHoldMs ?? 3000,
+            cooldownMs: defaults?.cooldownMs ?? 800
+        )
+    }()
+    private var lastJitterLog: String? = nil
+#endif
 
     private init() {
         print("MetricContract loaded: T0_Count=\(MetricContractBook.t0Count) T1_Count=\(MetricContractBook.t1Count)")
@@ -56,6 +68,7 @@ final class MetricComputer {
 
         #if DEBUG
         printMetricOutputs(outputs)
+        debugRunAntiJitterProbe(outputs: outputs)
         #endif
 
         return outputs
@@ -264,6 +277,89 @@ final class MetricComputer {
         cachedMinLandmarkConfidence = v
         return v
     }
+
+    #if DEBUG
+    private func loadAntiJitterDefaults() -> AntiJitterDefaults? {
+        if let v = cachedAntiJitterDefaults {
+            return v
+        }
+        guard let spec = try? PoseSpecLoader.shared.loadPoseSpec() else {
+            return nil
+        }
+        let v = spec.defaults.antiJitter
+        cachedAntiJitterDefaults = v
+        return v
+    }
+
+    private func debugRunAntiJitterProbe(outputs: [MetricKey: MetricOutput]) {
+        let tsMs = Int(Date().timeIntervalSince1970 * 1000)
+        let centerX = outputs[.centerXOffset]?.value
+        let hardThreshold: Double = 0.12
+
+        let selection: CueSelectionResult? = {
+            guard let v = centerX, v.isFinite else { return nil }
+            let cueId: String
+            if v > hardThreshold {
+                cueId = "FRAME_MOVE_LEFT"
+            } else if v < -hardThreshold {
+                cueId = "FRAME_MOVE_RIGHT"
+            } else {
+                return nil
+            }
+
+            let eval = CueEvaluationResult(
+                cueId: cueId,
+                level: .hard,
+                matchedThresholdId: "hard:>0.12",
+                evaluatedThresholdCount: 1,
+                usedRefMode: .noRef
+            )
+            let candidate = CueSelectionCandidate(
+                cueId: cueId,
+                priority: 4,
+                mutexGroup: "FRAME_X",
+                evaluation: eval,
+                errorValue: v,
+                hardThresholdAbs: hardThreshold
+            )
+            return CueSelector.pickOne([candidate])
+        }()
+
+        let input: AntiJitterInput? = selection.map {
+            AntiJitterInput(cueId: $0.candidate.cueId, level: $0.candidate.evaluation.level)
+        }
+
+        let (output, rawReason) = antiJitterGate.filterWithReason(inputCue: input, timestampMs: tsMs)
+        let candFrames = antiJitterGate.stableFrameCount
+        let holdMs = max(0, tsMs - antiJitterGate.lastOutputChangeMs)
+        let cooldownUntil: Int
+        if let input, let until = antiJitterGate.cooldownUntilByCueId[input.cueId] {
+            cooldownUntil = until
+        } else {
+            cooldownUntil = 0
+        }
+        let cooldownLeft = max(0, cooldownUntil - tsMs)
+
+        let outputStr: String = {
+            guard let output else { return "nil" }
+            return "\(output.cueId)/\(output.level.rawValue)"
+        }()
+
+        let reason = (rawReason == "frames") ? "hold" : rawReason
+        let line: String
+        if let input {
+            let inputStr = "\(input.cueId)/\(input.level.rawValue)"
+            line = "Jitter: input=\(inputStr) candFrames=\(candFrames) holdMs=\(holdMs) cooldownLeft=\(cooldownLeft) -> output=\(outputStr) reason=\(reason)"
+        } else {
+            line = "Jitter: input=nil -> output=\(outputStr) reason=\(reason)"
+        }
+
+        if line != lastJitterLog {
+            print(line)
+            lastJitterLog = line
+        }
+    }
+    #endif
 
     #if DEBUG
     private static let t0MetricKeys: [MetricKey] = [

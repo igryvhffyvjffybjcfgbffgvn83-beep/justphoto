@@ -1229,6 +1229,16 @@ struct DebugToolsScreen: View {
                     showAlert = true
                 }
 
+                Button("M6.14 AntiJitterTimeline") {
+                    let lines = AntiJitterGateDebug.simulateHoldVsFrames()
+                    print("AntiJitterTimeline:\n" + lines.joined(separator: "\n"))
+                    statusText = "M6.14 AntiJitterTimeline\n\n" + lines.joined(separator: "\n")
+                    statusIsError = false
+                    alertTitle = "M6.14"
+                    alertMessage = "timeline printed"
+                    showAlert = true
+                }
+
                 Button("CreateWriteFailedItem") {
                     do {
                         let itemId = try SessionRepository.shared.insertWriteFailedItemAndFlush()
