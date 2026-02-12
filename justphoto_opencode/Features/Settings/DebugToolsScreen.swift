@@ -1219,6 +1219,16 @@ struct DebugToolsScreen: View {
                     }
                 }
 
+                Button("M6.13 CueSelectorTimeline") {
+                    let lines = CueSelectorDebug.simulateTimeline()
+                    print("CueSelectorTimeline:\n" + lines.joined(separator: "\n"))
+                    statusText = "M6.13 CueSelectorTimeline\n\n" + lines.joined(separator: "\n")
+                    statusIsError = false
+                    alertTitle = "M6.13"
+                    alertMessage = "timeline printed"
+                    showAlert = true
+                }
+
                 Button("CreateWriteFailedItem") {
                     do {
                         let itemId = try SessionRepository.shared.insertWriteFailedItemAndFlush()

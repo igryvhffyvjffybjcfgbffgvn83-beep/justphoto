@@ -1,6 +1,7 @@
 import Foundation
 
 // M6.13 Phase 2: Cue selection with priority/severity tie-breakers.
+// NOTE: Selection is stateless here; anti-jitter/hold/cooldown are handled in M6.14.
 
 struct CueSelectionCandidate: Sendable {
     let cueId: String
@@ -129,6 +130,33 @@ enum CueSelector {
 
 #if DEBUG
 enum CueSelectorDebug {
+    private static func makeEval(_ cueId: String) -> CueEvaluationResult {
+        CueEvaluationResult(
+            cueId: cueId,
+            level: .hard,
+            matchedThresholdId: "hard:>0.10",
+            evaluatedThresholdCount: 1,
+            usedRefMode: .noRef
+        )
+    }
+
+    private static func makeCandidate(
+        cueId: String,
+        priority: Int,
+        mutexGroup: String,
+        errorValue: Double,
+        hardThresholdAbs: Double
+    ) -> CueSelectionCandidate {
+        CueSelectionCandidate(
+            cueId: cueId,
+            priority: priority,
+            mutexGroup: mutexGroup,
+            evaluation: makeEval(cueId),
+            errorValue: errorValue,
+            hardThresholdAbs: hardThresholdAbs
+        )
+    }
+
     static func validateSingleCandidate() -> CueSelectionResult? {
         guard let eval = CueEvaluatorDebug.injectMetricCase("FRAME_MOVE_LEFT_HARD") else { return nil }
         let candidate = CueSelectionCandidate(
@@ -147,18 +175,11 @@ enum CueSelectorDebug {
     }
 
     static func validatePriorityWins() -> CueSelectionResult? {
-        let eval = CueEvaluationResult(
-            cueId: "PRIORITY_HIGH",
-            level: .hard,
-            matchedThresholdId: "hard:>0.10",
-            evaluatedThresholdCount: 1,
-            usedRefMode: .noRef
-        )
         let high = CueSelectionCandidate(
             cueId: "PRIORITY_HIGH",
             priority: 5,
             mutexGroup: "FRAME_X",
-            evaluation: eval,
+            evaluation: makeEval("PRIORITY_HIGH"),
             errorValue: 0.05,
             hardThresholdAbs: 0.1
         )
@@ -166,7 +187,7 @@ enum CueSelectorDebug {
             cueId: "PRIORITY_LOW",
             priority: 3,
             mutexGroup: "FRAME_Y",
-            evaluation: eval,
+            evaluation: makeEval("PRIORITY_LOW"),
             errorValue: 0.1,
             hardThresholdAbs: 0.1
         )
@@ -174,18 +195,11 @@ enum CueSelectorDebug {
     }
 
     static func validateSeverityBoostWins() -> CueSelectionResult? {
-        let eval = CueEvaluationResult(
-            cueId: "SEVERITY_HIGH",
-            level: .hard,
-            matchedThresholdId: "hard:>0.10",
-            evaluatedThresholdCount: 1,
-            usedRefMode: .noRef
-        )
         let mild = CueSelectionCandidate(
             cueId: "SEVERITY_MILD",
             priority: 4,
             mutexGroup: "DIST",
-            evaluation: eval,
+            evaluation: makeEval("SEVERITY_MILD"),
             errorValue: 0.05,
             hardThresholdAbs: 0.1
         )
@@ -193,11 +207,34 @@ enum CueSelectorDebug {
             cueId: "SEVERITY_HIGH",
             priority: 3,
             mutexGroup: "DIST",
-            evaluation: eval,
+            evaluation: makeEval("SEVERITY_HIGH"),
             errorValue: 0.2,
             hardThresholdAbs: 0.1
         )
         return CueSelector.pickOne([mild, severe])
+    }
+
+    static func simulateTimeline() -> [String] {
+        let a = makeCandidate(cueId: "A", priority: 4, mutexGroup: "FRAME_X", errorValue: 0.12, hardThresholdAbs: 0.1)
+        let b = makeCandidate(cueId: "B", priority: 2, mutexGroup: "FRAME_Y", errorValue: 0.2, hardThresholdAbs: 0.1)
+        let c = makeCandidate(cueId: "C", priority: 5, mutexGroup: "DIST", errorValue: 0.05, hardThresholdAbs: 0.1)
+
+        let frames: [[CueSelectionCandidate]] = [
+            [],
+            [a],
+            [],
+            [a, b],
+            [c],
+            [],
+        ]
+
+        var out: [String] = []
+        for (idx, candidates) in frames.enumerated() {
+            let result = CueSelector.pickOne(candidates)
+            let cueId = result?.candidate.cueId ?? "<nil>"
+            out.append("t\(idx): \(cueId)")
+        }
+        return out
     }
 }
 #endif

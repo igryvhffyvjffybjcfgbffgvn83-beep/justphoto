@@ -286,7 +286,7 @@ Infrastructure modules:
 - `Infrastructure/Diagnostics/` (A.13 JSONL logging + export + rotation)
 - `Infrastructure/Prompt/` (Prompt, PromptCenter, PromptTimings, L1/L2/L3 host views)
 - `Infrastructure/Photos/` (PhotoKit write, album archiving, phantom healer)
-- `Infrastructure/PoseSpec/` (loader/validator/engine runtime, scheduling, cue selection)
+- `Infrastructure/PoseSpec/` (loader/validator/engine runtime, scheduling, cue selection + selector debug timeline)
 - `Infrastructure/Files/` (pending files, cache folders)
 - `Infrastructure/Network/` (NWPathMonitor wrapper)
 - `Infrastructure/Purchases/` (StoreKit 2 wrapper)
