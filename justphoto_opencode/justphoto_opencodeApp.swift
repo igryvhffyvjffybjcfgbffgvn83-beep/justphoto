@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Foundation
 import GRDB
 
 @main
@@ -23,30 +24,32 @@ struct justphoto_opencodeApp: App {
             JPDebugPrint("PoseSpecLoadFromBundleFAILED")
         }
 
-        do {
-            let result = try DatabaseManager.shared.start()
-            JPDebugPrint("DBOpened: \(result.path) existed_before=\(result.existedBefore) exists_after=\(result.existsAfter)")
+        DispatchQueue.global(qos: .utility).async {
+            do {
+                let result = try DatabaseManager.shared.start()
+                JPDebugPrint("DBOpened: \(result.path) existed_before=\(result.existedBefore) exists_after=\(result.existsAfter)")
 
-            if result.newMigrations.isEmpty {
-                JPDebugPrint("DBMigrationsUpToDate")
-            } else {
-                for id in result.newMigrations {
-                    JPDebugPrint("DBMigrated:\(id)")
+                if result.newMigrations.isEmpty {
+                    JPDebugPrint("DBMigrationsUpToDate")
+                } else {
+                    for id in result.newMigrations {
+                        JPDebugPrint("DBMigrated:\(id)")
+                    }
                 }
-            }
 
-            let session = try SessionRepository.shared.ensureFreshSession(scene: "cafe")
-            JPDebugPrint("SessionReady: \(session.sessionId) changed=\(session.changed)")
-            if let counts = try SessionRepository.shared.currentWorksetCounts() {
-                JPDebugPrint("WorksetCounts: session_items=\(counts.sessionItems) ref_items=\(counts.refItems)")
-            }
+                let session = try SessionRepository.shared.ensureFreshSession(scene: "cafe")
+                JPDebugPrint("SessionReady: \(session.sessionId) changed=\(session.changed)")
+                if let counts = try SessionRepository.shared.currentWorksetCounts() {
+                    JPDebugPrint("WorksetCounts: session_items=\(counts.sessionItems) ref_items=\(counts.refItems)")
+                }
 
-            // M4.28: retry pending album_add_failed once on next launch.
-            Task {
-                await AlbumAddRetryScheduler.shared.kick()
+                // M4.28: retry pending album_add_failed once on next launch.
+                Task {
+                    await AlbumAddRetryScheduler.shared.kick()
+                }
+            } catch {
+                JPDebugPrint("DBOpenFAILED: \(error)")
             }
-        } catch {
-            JPDebugPrint("DBOpenFAILED: \(error)")
         }
     }
 
@@ -57,12 +60,18 @@ struct justphoto_opencodeApp: App {
                 .onChange(of: scenePhase) { _, phase in
                     switch phase {
                     case .active:
-                        do {
-                            _ = try SessionRepository.shared.ensureFreshSession(scene: "cafe")
-                            try SessionRepository.shared.touchCurrentSession()
-                            Task { await AlbumAddRetryScheduler.shared.kick() }
-                        } catch {
-                            JPDebugPrint("SessionEnsureFAILED: \(error)")
+                        DispatchQueue.global(qos: .utility).async {
+                            do {
+                                _ = try SessionRepository.shared.ensureFreshSession(scene: "cafe")
+                                try SessionRepository.shared.touchCurrentSession()
+                                DispatchQueue.main.async {
+                                    Task { await AlbumAddRetryScheduler.shared.kick() }
+                                }
+                            } catch {
+                                DispatchQueue.main.async {
+                                    JPDebugPrint("SessionEnsureFAILED: \(error)")
+                                }
+                            }
                         }
                     case .inactive, .background:
                         DatabaseManager.shared.flush(reason: "scenePhase_\(String(describing: phase))")

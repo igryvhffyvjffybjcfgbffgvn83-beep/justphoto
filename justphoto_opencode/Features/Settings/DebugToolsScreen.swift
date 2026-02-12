@@ -318,6 +318,40 @@ struct DebugToolsScreen: View {
                     }
                 }
 
+                Button("PrintDBStartMetrics") {
+                    if let metrics = DatabaseManager.shared.lastStartMetrics {
+                        let formatter = ISO8601DateFormatter()
+                        let startedAt = formatter.string(from: metrics.startedAt)
+                        let migrations = metrics.newMigrations.isEmpty ? "none" : metrics.newMigrations.joined(separator: ", ")
+                        let mainText = metrics.wasMainThread ? "true" : "false"
+                        print(
+                            "DBStartMetrics: started_at=\(startedAt) duration_ms=\(metrics.durationMs) main_thread=\(mainText) existed_before=\(metrics.existedBefore) exists_after=\(metrics.existsAfter) new_migrations=\(migrations) path=\(metrics.path)"
+                        )
+
+                        statusText = """
+                        DBStartMetrics
+
+                        started_at=\(startedAt)
+                        duration_ms=\(metrics.durationMs)
+                        main_thread=\(mainText)
+                        existed_before=\(metrics.existedBefore)
+                        exists_after=\(metrics.existsAfter)
+                        new_migrations=\(migrations)
+                        path=\(metrics.path)
+                        """
+                        statusIsError = false
+                        alertTitle = "DBStartMetrics"
+                        alertMessage = "duration_ms=\(metrics.durationMs)\nmain_thread=\(mainText)\nnew_migrations=\(migrations)"
+                        showAlert = true
+                    } else {
+                        statusText = "DBStartMetrics: missing (DB not started)"
+                        statusIsError = true
+                        alertTitle = "DBStartMetrics"
+                        alertMessage = "No start metrics yet."
+                        showAlert = true
+                    }
+                }
+
                 Button("CreateNewSession") {
                     do {
                         let id = try SessionRepository.shared.createNewSession(scene: "cafe")

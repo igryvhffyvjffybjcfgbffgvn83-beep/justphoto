@@ -9,7 +9,6 @@ enum SessionRepositoryError: Error {
     case databaseNotReady
 }
 
-@MainActor
 final class SessionRepository {
     static let shared = SessionRepository()
 

@@ -1,10 +1,12 @@
 import SwiftUI
+import Foundation
 
 struct SettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var showingExportSheet = false
     @State private var exportItems: [Any] = []
+    @State private var isExporting = false
 
     @State private var showAlert = false
     @State private var alertTitle = ""
@@ -16,26 +18,47 @@ struct SettingsSheet: View {
                 Section("Settings") {
                     Text("MVP shell")
 
-                    Button("Export Diagnostics Logs") {
-                        do {
-                            let exporter = DiagnosticsExporter()
-                            let exportURL = try exporter.exportDiagnosticsFile()
+                    Button {
+                        guard !isExporting else { return }
+                        isExporting = true
+                        let exporter = DiagnosticsExporter()
 
-                            // Prefer NSItemProvider so the share sheet consistently treats this
-                            // as a file-backed item (esp. for Save to Files).
-                            if let provider = NSItemProvider(contentsOf: exportURL) {
-                                provider.suggestedName = exportURL.lastPathComponent
-                                exportItems = [provider]
-                            } else {
-                                exportItems = [exportURL]
+                        DispatchQueue.global(qos: .utility).async {
+                            do {
+                                let exportURL = try exporter.exportDiagnosticsFile()
+                                let item: Any
+                                if let provider = NSItemProvider(contentsOf: exportURL) {
+                                    provider.suggestedName = exportURL.lastPathComponent
+                                    item = provider
+                                } else {
+                                    item = exportURL
+                                }
+
+                                DispatchQueue.main.async {
+                                    self.exportItems = [item]
+                                    self.showingExportSheet = true
+                                    self.isExporting = false
+                                }
+                            } catch {
+                                DispatchQueue.main.async {
+                                    self.alertTitle = "Export failed"
+                                    self.alertMessage = error.localizedDescription
+                                    self.showAlert = true
+                                    self.isExporting = false
+                                }
                             }
-                            showingExportSheet = true
-                        } catch {
-                            alertTitle = "Export failed"
-                            alertMessage = error.localizedDescription
-                            showAlert = true
+                        }
+                    } label: {
+                        if isExporting {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                Text("Exporting Diagnostics Logs...")
+                            }
+                        } else {
+                            Text("Export Diagnostics Logs")
                         }
                     }
+                    .disabled(isExporting)
                 }
 
 #if DEBUG

@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -73,22 +74,28 @@ struct CameraScreen: View {
                             #endif
                         },
                         onToggleLike: { item in
-                            do {
-                                let nextLiked = !item.liked
-                                _ = try SessionRepository.shared.setLiked(itemId: item.itemId, liked: nextLiked)
-                                NotificationCenter.default.post(name: CaptureEvents.sessionItemsChanged, object: nil)
+                            DispatchQueue.global(qos: .utility).async {
+                                do {
+                                    let nextLiked = !item.liked
+                                    _ = try SessionRepository.shared.setLiked(itemId: item.itemId, liked: nextLiked)
 
-                                Task {
-                                    let r = await FavoriteSyncer.shared.syncFavoriteIfPossible(
-                                        assetLocalIdentifier: item.assetId,
-                                        isFavorite: nextLiked
-                                    )
-                                    if r == .failed {
-                                        await MainActor.run { maybeShowFavoriteSyncFailedBanner() }
+                                    DispatchQueue.main.async {
+                                        NotificationCenter.default.post(name: CaptureEvents.sessionItemsChanged, object: nil)
+                                        Task {
+                                            let r = await FavoriteSyncer.shared.syncFavoriteIfPossible(
+                                                assetLocalIdentifier: item.assetId,
+                                                isFavorite: nextLiked
+                                            )
+                                            if r == .failed {
+                                                await MainActor.run { self.maybeShowFavoriteSyncFailedBanner() }
+                                            }
+                                        }
+                                    }
+                                } catch {
+                                    DispatchQueue.main.async {
+                                        JPDebugPrint("FilmstripToggleLikeFAILED: item_id=\(item.itemId) error=\(error)")
                                     }
                                 }
-                            } catch {
-                                JPDebugPrint("FilmstripToggleLikeFAILED: item_id=\(item.itemId) error=\(error)")
                             }
                         }
                     )
@@ -303,53 +310,65 @@ struct CameraScreen: View {
             case "workset_20_limit_modal":
                 switch e.actionId {
                 case "clear_unliked":
-                    do {
-                        let deleted = try SessionRepository.shared.clearUnlikedItemsForCurrentSession()
-                        JPDebugPrint("WorksetClearUnliked: deleted=\(deleted)")
-                        refreshSessionCounts()
-                        promptCenter.show(
-                            Prompt(
-                                key: "workset_clear_unliked_done",
-                                level: .L1,
-                                surface: .cameraToastBottom,
-                                priority: 10,
-                                blocksShutter: false,
-                                isClosable: false,
-                                autoDismissSeconds: 2.0,
-                                gate: .none,
-                                title: nil,
-                                message: "已清理未喜欢（\(deleted)）",
-                                primaryActionId: nil,
-                                primaryTitle: nil,
-                                secondaryActionId: nil,
-                                secondaryTitle: nil,
-                                tertiaryActionId: nil,
-                                tertiaryTitle: nil,
-                                throttle: .init(
-                                    perKeyMinIntervalSec: 0,
-                                    globalWindowSec: 0,
-                                    globalMaxCountInWindow: 0,
-                                    suppressAfterDismissSec: 0
-                                ),
-                                payload: ["deleted": .int(deleted)],
-                                emittedAt: Date()
-                            )
-                        )
-                    } catch {
-                        JPDebugPrint("WorksetClearUnlikedFAILED: \(error)")
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        do {
+                            let deleted = try SessionRepository.shared.clearUnlikedItemsForCurrentSession()
+                            DispatchQueue.main.async {
+                                JPDebugPrint("WorksetClearUnliked: deleted=\(deleted)")
+                                self.refreshSessionCounts()
+                                self.promptCenter.show(
+                                    Prompt(
+                                        key: "workset_clear_unliked_done",
+                                        level: .L1,
+                                        surface: .cameraToastBottom,
+                                        priority: 10,
+                                        blocksShutter: false,
+                                        isClosable: false,
+                                        autoDismissSeconds: 2.0,
+                                        gate: .none,
+                                        title: nil,
+                                        message: "已清理未喜欢（\(deleted)）",
+                                        primaryActionId: nil,
+                                        primaryTitle: nil,
+                                        secondaryActionId: nil,
+                                        secondaryTitle: nil,
+                                        tertiaryActionId: nil,
+                                        tertiaryTitle: nil,
+                                        throttle: .init(
+                                            perKeyMinIntervalSec: 0,
+                                            globalWindowSec: 0,
+                                            globalMaxCountInWindow: 0,
+                                            suppressAfterDismissSec: 0
+                                        ),
+                                        payload: ["deleted": .int(deleted)],
+                                        emittedAt: Date()
+                                    )
+                                )
+                            }
+                        } catch {
+                            DispatchQueue.main.async {
+                                JPDebugPrint("WorksetClearUnlikedFAILED: \(error)")
+                            }
+                        }
                     }
                 case "go_wrap":
                     showingWrapSheet = true
                 case "reset_session":
-                    do {
-                        let scene = (try SessionRepository.shared.loadCurrentSession()?.scene) ?? "cafe"
-                        try SessionRepository.shared.clearCurrentSession(deleteData: true)
-                        _ = try SessionRepository.shared.createNewSession(scene: scene)
-                        didShowWorkset20LimitModalInThisFullState = false
-                        refreshSessionCounts()
-                        JPDebugPrint("SessionReset: ok")
-                    } catch {
-                        JPDebugPrint("SessionResetFAILED: \(error)")
+                    DispatchQueue.global(qos: .userInitiated).async {
+                        do {
+                            let scene = (try SessionRepository.shared.loadCurrentSession()?.scene) ?? "cafe"
+                            try SessionRepository.shared.clearCurrentSession(deleteData: true)
+                            _ = try SessionRepository.shared.createNewSession(scene: scene)
+                            DispatchQueue.main.async {
+                                self.didShowWorkset20LimitModalInThisFullState = false
+                                self.refreshSessionCounts()
+                                JPDebugPrint("SessionReset: ok")
+                            }
+                        } catch {
+                            DispatchQueue.main.async {
+                                JPDebugPrint("SessionResetFAILED: \(error)")
+                            }
+                        }
                     }
                 case "cancel":
                     // Cancel keeps shutter disabled while workset_count == 20 (SessionRuleGate enforces this).
@@ -441,13 +460,19 @@ struct CameraScreen: View {
             refreshFilmstrip()
 
             // M4.25: show once per session, only when a failure happens (not on app launch).
-            do {
-                let c = try SessionRepository.shared.countAlbumAddFailedItems()
-                if c > 0 {
-                    promptCenter.show(makeAlbumAddFailedBannerPrompt(count: c))
+            DispatchQueue.global(qos: .utility).async {
+                do {
+                    let c = try SessionRepository.shared.countAlbumAddFailedItems()
+                    if c > 0 {
+                        DispatchQueue.main.async {
+                            self.promptCenter.show(self.makeAlbumAddFailedBannerPrompt(count: c))
+                        }
+                    }
+                } catch {
+                    DispatchQueue.main.async {
+                        JPDebugPrint("AlbumAddFailedCountFAILED: \(error)")
+                    }
                 }
-            } catch {
-                JPDebugPrint("AlbumAddFailedCountFAILED: \(error)")
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: CaptureEvents.sessionItemsChanged)) { _ in
@@ -504,25 +529,32 @@ struct CameraScreen: View {
             "PoseSpecCheckStart: armed_missing_alias=\(PoseSpecDebugSettings.debugIsMissingAliasArmed()) armed_missing_eye_roi=\(PoseSpecDebugSettings.debugIsMissingEyeROIArmed()) armed_wrong_prd=\(PoseSpecDebugSettings.debugIsWrongPrdArmed()) armed_broken=\(PoseSpecDebugSettings.debugIsBrokenPoseSpecArmed())"
         )
 #endif
-        do {
-            let spec = try PoseSpecLoader.shared.loadPoseSpec()
-            try PoseSpecValidator.validateRequiredFields(spec)
-            try PoseSpecValidator.validatePrdVersion(spec)
-            try PoseSpecValidator.validateBindingAliasesMinimalSet(spec)
-            try PoseSpecValidator.validateRoisDictionary(spec)
-            poseSpecValid = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let spec = try PoseSpecLoader.shared.loadPoseSpec()
+                try PoseSpecValidator.validateRequiredFields(spec)
+                try PoseSpecValidator.validatePrdVersion(spec)
+                try PoseSpecValidator.validateBindingAliasesMinimalSet(spec)
+                try PoseSpecValidator.validateRoisDictionary(spec)
 
-            // M6.10 Phase 1: Ensure MetricComputer contract is initialized (prints counts).
-            _ = MetricComputer.shared
+                // M6.10 Phase 1: Ensure MetricComputer contract is initialized (prints counts).
+                _ = MetricComputer.shared
+
+                DispatchQueue.main.async {
+                    self.poseSpecValid = true
 #if DEBUG
-            print("PoseSpec Loaded & Validated")
+                    print("PoseSpec Loaded & Validated")
 #endif
-        } catch {
-            poseSpecValid = false
-            if let k = promptCenter.modal?.key, k.hasPrefix("posespec_") {
-                return
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.poseSpecValid = false
+                    if let k = self.promptCenter.modal?.key, k.hasPrefix("posespec_") {
+                        return
+                    }
+                    self.promptCenter.show(self.makePoseSpecInvalidPrompt(error: error, expectedPrdVersion: expectedPrdVersion))
+                }
             }
-            promptCenter.show(makePoseSpecInvalidPrompt(error: error, expectedPrdVersion: expectedPrdVersion))
         }
     }
 
@@ -742,39 +774,56 @@ struct CameraScreen: View {
     }
 
     private func refreshSessionCounts() {
-        do {
-            let previous = worksetCount
-            let counts = try SessionRepository.shared.currentWorksetCounter()
-            let nextWorkset = counts?.worksetCount ?? 0
-            worksetCount = nextWorkset
-            inFlightCount = counts?.inFlightCount ?? 0
-            writeFailedCount = try SessionRepository.shared.countWriteFailedItems()
-            albumAddFailedCount = try SessionRepository.shared.countAlbumAddFailedItems()
+        DispatchQueue.global(qos: .utility).async {
+            do {
+                let counts = try SessionRepository.shared.currentWorksetCounter()
+                let nextWorkset = counts?.worksetCount ?? 0
+                let nextInFlight = counts?.inFlightCount ?? 0
+                let nextWriteFailed = try SessionRepository.shared.countWriteFailedItems()
+                let nextAlbumAddFailed = try SessionRepository.shared.countAlbumAddFailedItems()
 
-            maybeShowWorkset15CountBanner(previousWorksetCount: previous, currentWorksetCount: nextWorkset)
-            maybeShowWorkset20LimitModal(previousWorksetCount: previous, currentWorksetCount: nextWorkset)
-            updateWorksetFullBanner(currentWorksetCount: nextWorkset)
-            updateWriteFailedBlockModal(writeFailedCount: writeFailedCount)
-        } catch {
-            JPDebugPrint("RefreshSessionCountsFAILED: \(error)")
+                DispatchQueue.main.async {
+                    let previous = self.worksetCount
+                    self.worksetCount = nextWorkset
+                    self.inFlightCount = nextInFlight
+                    self.writeFailedCount = nextWriteFailed
+                    self.albumAddFailedCount = nextAlbumAddFailed
+
+                    self.maybeShowWorkset15CountBanner(previousWorksetCount: previous, currentWorksetCount: nextWorkset)
+                    self.maybeShowWorkset20LimitModal(previousWorksetCount: previous, currentWorksetCount: nextWorkset)
+                    self.updateWorksetFullBanner(currentWorksetCount: nextWorkset)
+                    self.updateWriteFailedBlockModal(writeFailedCount: nextWriteFailed)
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    JPDebugPrint("RefreshSessionCountsFAILED: \(error)")
+                }
+            }
         }
     }
 
     private func refreshFilmstrip() {
-        do {
-            filmstripItems = try SessionRepository.shared.latestItemsForCurrentSession(limit: 30)
-            if filmstripItems.count != lastFilmstripCount {
-                lastFilmstripCount = filmstripItems.count
-                JPDebugPrint("FilmstripRefreshed: count=\(filmstripItems.count)")
+        DispatchQueue.global(qos: .utility).async {
+            do {
+                let items = try SessionRepository.shared.latestItemsForCurrentSession(limit: 30)
+                DispatchQueue.main.async {
+                    self.filmstripItems = items
+                    if items.count != self.lastFilmstripCount {
+                        self.lastFilmstripCount = items.count
+                        JPDebugPrint("FilmstripRefreshed: count=\(items.count)")
+                    }
+                    if self.selectedFilmstripItemId == nil {
+                        self.selectedFilmstripItemId = items.first?.itemId
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.filmstripItems = []
+                    self.selectedFilmstripItemId = nil
+                    self.lastFilmstripCount = 0
+                    JPDebugPrint("RefreshFilmstripFAILED: \(error)")
+                }
             }
-            if selectedFilmstripItemId == nil {
-                selectedFilmstripItemId = filmstripItems.first?.itemId
-            }
-        } catch {
-            filmstripItems = []
-            selectedFilmstripItemId = nil
-            lastFilmstripCount = 0
-            JPDebugPrint("RefreshFilmstripFAILED: \(error)")
         }
     }
 

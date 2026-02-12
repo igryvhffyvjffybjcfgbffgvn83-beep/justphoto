@@ -1,11 +1,35 @@
 import Foundation
 import GRDB
 
-@MainActor
 final class DatabaseManager {
     static let shared = DatabaseManager()
 
-    private(set) var dbQueue: DatabaseQueue?
+    struct StartMetrics: Sendable {
+        let startedAt: Date
+        let durationMs: Int
+        let wasMainThread: Bool
+        let path: String
+        let existedBefore: Bool
+        let existsAfter: Bool
+        let newMigrations: [String]
+    }
+
+    private let startLock = NSLock()
+    private let stateLock = NSLock()
+    private var _dbQueue: DatabaseQueue?
+    private var _lastStartMetrics: StartMetrics?
+
+    var dbQueue: DatabaseQueue? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _dbQueue
+    }
+
+    var lastStartMetrics: StartMetrics? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return _lastStartMetrics
+    }
 
     private init() {}
 
@@ -20,6 +44,9 @@ final class DatabaseManager {
 
     @discardableResult
     func start() throws -> (path: String, existedBefore: Bool, existsAfter: Bool, newMigrations: [String]) {
+        startLock.lock()
+        defer { startLock.unlock() }
+
         if dbQueue != nil {
             let url = try DatabasePaths.databaseFileURL()
             return (
@@ -29,6 +56,9 @@ final class DatabaseManager {
                 newMigrations: []
             )
         }
+
+        let startedAt = Date()
+        let wasMainThread = Thread.isMainThread
 
         let url = try DatabasePaths.databaseFileURL()
         let existedBefore = FileManager.default.fileExists(atPath: url.path)
@@ -46,7 +76,18 @@ final class DatabaseManager {
         let after = try appliedMigrations(queue)
         let newMigrations = Array(after.subtracting(before)).sorted()
 
-        self.dbQueue = queue
+        stateLock.lock()
+        self._dbQueue = queue
+        self._lastStartMetrics = StartMetrics(
+            startedAt: startedAt,
+            durationMs: Int((Date().timeIntervalSince(startedAt) * 1000).rounded()),
+            wasMainThread: wasMainThread,
+            path: url.path,
+            existedBefore: existedBefore,
+            existsAfter: FileManager.default.fileExists(atPath: url.path),
+            newMigrations: newMigrations
+        )
+        stateLock.unlock()
         let existsAfter = FileManager.default.fileExists(atPath: url.path)
         return (
             path: url.path,

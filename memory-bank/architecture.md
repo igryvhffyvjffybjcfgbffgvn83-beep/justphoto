@@ -302,6 +302,10 @@ Database file creation (Step M1.11):
 Migration framework (Step M1.12):
 - `DatabaseManager` runs migrations on startup and prints `DBMigrated:v1` on first apply, then `DBMigrationsUpToDate` on subsequent launches.
 
+Database startup threading (Step M1.12b):
+- `DatabaseManager.start()` is invoked on a background queue to avoid blocking the main runloop during file I/O and migrations.
+- DebugTools exposes a `PrintDBStartMetrics` button to verify startup duration and whether it ran on the main thread.
+
 Sessions table (Step M1.13):
 - `DatabaseMigratorFactory` registers migration `v2_sessions` which creates the `sessions` table.
 
