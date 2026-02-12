@@ -24,7 +24,7 @@ struct DebugToolsScreen: View {
     private static let cueStabilityLayer = CueStabilityLayer()
 
     var body: some View {
-#if false
+#if true
         List {
             Section("Debug Tools") {
                 Group {
@@ -1166,7 +1166,7 @@ struct DebugToolsScreen: View {
                     statusIsError = false
 
                     Task {
-                        let result = spamDiagnostics()
+                        let result = await spamDiagnostics()
                         await MainActor.run {
                             isRunning = false
                             statusText = result.statusText
@@ -1227,7 +1227,7 @@ struct DebugToolsScreen: View {
                     print("WriteTestDiagnosticTapped")
 
                     Task {
-                        let result = writeTestDiagnostic()
+                        let result = await writeTestDiagnostic()
                         await MainActor.run {
                             isRunning = false
                             statusText = result.statusText
@@ -1417,7 +1417,7 @@ struct DebugToolsScreen: View {
                     print("WriteTestDiagnosticTapped")
 
                     Task {
-                        let result = writeTestDiagnostic()
+                        let result = await writeTestDiagnostic()
                         await MainActor.run {
                             isRunning = false
                             statusText = result.statusText
@@ -1466,7 +1466,7 @@ struct DebugToolsScreen: View {
                 statusIsError = false
 
                 Task {
-                    let result = writeA13_withrefMatchState()
+                    let result = await writeA13_withrefMatchState()
                     await MainActor.run {
                         isRunning = false
                         statusText = result.statusText
@@ -1486,7 +1486,7 @@ struct DebugToolsScreen: View {
                 statusIsError = false
 
                 Task {
-                    let result = writeA13_withrefFallback()
+                    let result = await writeA13_withrefFallback()
                     await MainActor.run {
                         isRunning = false
                         statusText = result.statusText
@@ -1506,7 +1506,7 @@ struct DebugToolsScreen: View {
                 statusIsError = false
 
                 Task {
-                    let result = writeA13_photoWriteVerification()
+                    let result = await writeA13_photoWriteVerification()
                     await MainActor.run {
                         isRunning = false
                         statusText = result.statusText
@@ -1526,7 +1526,7 @@ struct DebugToolsScreen: View {
                 statusIsError = false
 
                 Task {
-                    let result = writeA13_phantomAssetDetected()
+                    let result = await writeA13_phantomAssetDetected()
                     await MainActor.run {
                         isRunning = false
                         statusText = result.statusText
@@ -1546,7 +1546,7 @@ struct DebugToolsScreen: View {
                 statusIsError = false
 
                 Task {
-                    let result = writeA13_odrAutoRetry()
+                    let result = await writeA13_odrAutoRetry()
                     await MainActor.run {
                         isRunning = false
                         statusText = result.statusText
@@ -1586,14 +1586,20 @@ struct DebugToolsScreen: View {
         }
     }
 
-    private func writeTestDiagnostic() -> (ok: Bool, statusText: String, alertMessage: String) {
+    private func writeTestDiagnostic() async -> (ok: Bool, statusText: String, alertMessage: String) {
         let logger = DiagnosticsLogger()
         let event = DiagnosticsEvent.makeTestEvent()
         do {
             let line = try logger.encodeJSONLine(event)
             print(line)
 
-            let appendResult = try logger.appendJSONLine(line)
+            guard let appendResult = await DiagnosticsEventWriter.shared.appendJSONLine(line) else {
+                return (
+                    ok: false,
+                    statusText: "WriteTestDiagnostic: FAILED (append failed)",
+                    alertMessage: "Append failed. Check console for DiagnosticsAppendFAILED."
+                )
+            }
             print("DiagnosticAppended")
 
             let data = Data(line.utf8)
@@ -1684,7 +1690,7 @@ struct DebugToolsScreen: View {
         }
     }
 
-    private func spamDiagnostics() -> (ok: Bool, statusText: String, alertMessage: String) {
+    private func spamDiagnostics() async -> (ok: Bool, statusText: String, alertMessage: String) {
         do {
             let logger = DiagnosticsLogger()
             let file = try logger.currentLogFileURL()
@@ -1710,7 +1716,13 @@ struct DebugToolsScreen: View {
                 )
 
                 let line = try logger.encodeJSONLine(event)
-                _ = try logger.appendJSONLine(line)
+                guard await DiagnosticsEventWriter.shared.appendJSONLine(line) != nil else {
+                    return (
+                        ok: false,
+                        statusText: "SpamDiagnostics: FAILED (append failed)",
+                        alertMessage: "Append failed. Check console for DiagnosticsAppendFAILED."
+                    )
+                }
 
                 if i % 2000 == 0 {
                     try rotation.rotateIfNeeded()
@@ -1794,17 +1806,15 @@ struct DebugToolsScreen: View {
         }
     }
 
-    private func writeA13_withrefMatchState() -> (ok: Bool, statusText: String, alertMessage: String) {
-        do {
-            let logger = DiagnosticsLogger()
-            let result = try logger.logWithRefMatchState(
-                sessionId: "dev_session",
-                scene: "cafe",
-                match: false,
-                requiredDimensions: ["centerXOffset", "centerYOffset"],
-                blockedBy: ["centerXOffset"],
-                mirrorApplied: true
-            )
+    private func writeA13_withrefMatchState() async -> (ok: Bool, statusText: String, alertMessage: String) {
+        if let result = await DiagnosticsEventWriter.shared.logWithRefMatchState(
+            sessionId: "dev_session",
+            scene: "cafe",
+            match: false,
+            requiredDimensions: ["centerXOffset", "centerYOffset"],
+            blockedBy: ["centerXOffset"],
+            mirrorApplied: true
+        ) {
             print(result.jsonLine)
             print("A13EventWritten: withref_match_state")
             return (
@@ -1812,25 +1822,22 @@ struct DebugToolsScreen: View {
                 statusText: "WriteA13 withref_match_state: OK\n\nfile: \(result.fileURL.path)\n\n\(result.jsonLine)",
                 alertMessage: "Appended withref_match_state to diagnostics log."
             )
-        } catch {
-            print("A13EventWriteFAILED: withref_match_state: \(error)")
-            return (
-                ok: false,
-                statusText: "WriteA13 withref_match_state: FAILED\n\(error.localizedDescription)",
-                alertMessage: error.localizedDescription
-            )
         }
+        print("A13EventWriteFAILED: withref_match_state")
+        return (
+            ok: false,
+            statusText: "WriteA13 withref_match_state: FAILED",
+            alertMessage: "Append failed. Check console for DiagnosticsAppendFAILED."
+        )
     }
 
-    private func writeA13_withrefFallback() -> (ok: Bool, statusText: String, alertMessage: String) {
-        do {
-            let logger = DiagnosticsLogger()
-            let result = try logger.logWithRefFallback(
-                sessionId: "dev_session",
-                scene: "cafe",
-                reason: "missing_eyeROI",
-                missing: ["eyeROI"]
-            )
+    private func writeA13_withrefFallback() async -> (ok: Bool, statusText: String, alertMessage: String) {
+        if let result = await DiagnosticsEventWriter.shared.logWithRefFallback(
+            sessionId: "dev_session",
+            scene: "cafe",
+            reason: "missing_eyeROI",
+            missing: ["eyeROI"]
+        ) {
             print(result.jsonLine)
             print("A13EventWritten: withref_fallback")
             return (
@@ -1838,28 +1845,25 @@ struct DebugToolsScreen: View {
                 statusText: "WriteA13 withref_fallback: OK\n\nfile: \(result.fileURL.path)\n\n\(result.jsonLine)",
                 alertMessage: "Appended withref_fallback to diagnostics log."
             )
-        } catch {
-            print("A13EventWriteFAILED: withref_fallback: \(error)")
-            return (
-                ok: false,
-                statusText: "WriteA13 withref_fallback: FAILED\n\(error.localizedDescription)",
-                alertMessage: error.localizedDescription
-            )
         }
+        print("A13EventWriteFAILED: withref_fallback")
+        return (
+            ok: false,
+            statusText: "WriteA13 withref_fallback: FAILED",
+            alertMessage: "Append failed. Check console for DiagnosticsAppendFAILED."
+        )
     }
 
-    private func writeA13_photoWriteVerification() -> (ok: Bool, statusText: String, alertMessage: String) {
-        do {
-            let logger = DiagnosticsLogger()
-            let result = try logger.logPhotoWriteVerification(
-                sessionId: "dev_session",
-                scene: "cafe",
-                assetId: "debug_asset_id",
-                firstFetchMs: 12,
-                retryUsed: true,
-                retryDelayMs: 500,
-                verifiedWithin2s: true
-            )
+    private func writeA13_photoWriteVerification() async -> (ok: Bool, statusText: String, alertMessage: String) {
+        if let result = await DiagnosticsEventWriter.shared.logPhotoWriteVerification(
+            sessionId: "dev_session",
+            scene: "cafe",
+            assetId: "debug_asset_id",
+            firstFetchMs: 12,
+            retryUsed: true,
+            retryDelayMs: 500,
+            verifiedWithin2s: true
+        ) {
             print(result.jsonLine)
             print("A13EventWritten: photo_write_verification")
             return (
@@ -1867,26 +1871,23 @@ struct DebugToolsScreen: View {
                 statusText: "WriteA13 photo_write_verification: OK\n\nfile: \(result.fileURL.path)\n\n\(result.jsonLine)",
                 alertMessage: "Appended photo_write_verification to diagnostics log."
             )
-        } catch {
-            print("A13EventWriteFAILED: photo_write_verification: \(error)")
-            return (
-                ok: false,
-                statusText: "WriteA13 photo_write_verification: FAILED\n\(error.localizedDescription)",
-                alertMessage: error.localizedDescription
-            )
         }
+        print("A13EventWriteFAILED: photo_write_verification")
+        return (
+            ok: false,
+            statusText: "WriteA13 photo_write_verification: FAILED",
+            alertMessage: "Append failed. Check console for DiagnosticsAppendFAILED."
+        )
     }
 
-    private func writeA13_phantomAssetDetected() -> (ok: Bool, statusText: String, alertMessage: String) {
-        do {
-            let logger = DiagnosticsLogger()
-            let result = try logger.logPhantomAssetDetected(
-                sessionId: "dev_session",
-                scene: "cafe",
-                assetIdHash: "debug_hash",
-                authSnapshot: "limited",
-                healAction: "pruned"
-            )
+    private func writeA13_phantomAssetDetected() async -> (ok: Bool, statusText: String, alertMessage: String) {
+        if let result = await DiagnosticsEventWriter.shared.logPhantomAssetDetected(
+            sessionId: "dev_session",
+            scene: "cafe",
+            assetIdHash: "debug_hash",
+            authSnapshot: "limited",
+            healAction: "pruned"
+        ) {
             print(result.jsonLine)
             print("A13EventWritten: phantom_asset_detected")
             return (
@@ -1894,26 +1895,23 @@ struct DebugToolsScreen: View {
                 statusText: "WriteA13 phantom_asset_detected: OK\n\nfile: \(result.fileURL.path)\n\n\(result.jsonLine)",
                 alertMessage: "Appended phantom_asset_detected to diagnostics log."
             )
-        } catch {
-            print("A13EventWriteFAILED: phantom_asset_detected: \(error)")
-            return (
-                ok: false,
-                statusText: "WriteA13 phantom_asset_detected: FAILED\n\(error.localizedDescription)",
-                alertMessage: error.localizedDescription
-            )
         }
+        print("A13EventWriteFAILED: phantom_asset_detected")
+        return (
+            ok: false,
+            statusText: "WriteA13 phantom_asset_detected: FAILED",
+            alertMessage: "Append failed. Check console for DiagnosticsAppendFAILED."
+        )
     }
 
-    private func writeA13_odrAutoRetry() -> (ok: Bool, statusText: String, alertMessage: String) {
-        do {
-            let logger = DiagnosticsLogger()
-            let result = try logger.logODRAutoRetry(
-                sessionId: "dev_session",
-                scene: "cafe",
-                stateBefore: "failed_retry",
-                debounceMs: 500,
-                result: "success"
-            )
+    private func writeA13_odrAutoRetry() async -> (ok: Bool, statusText: String, alertMessage: String) {
+        if let result = await DiagnosticsEventWriter.shared.logODRAutoRetry(
+            sessionId: "dev_session",
+            scene: "cafe",
+            stateBefore: "failed_retry",
+            debounceMs: 500,
+            result: "success"
+        ) {
             print(result.jsonLine)
             print("A13EventWritten: odr_auto_retry")
             return (
@@ -1921,14 +1919,13 @@ struct DebugToolsScreen: View {
                 statusText: "WriteA13 odr_auto_retry: OK\n\nfile: \(result.fileURL.path)\n\n\(result.jsonLine)",
                 alertMessage: "Appended odr_auto_retry to diagnostics log."
             )
-        } catch {
-            print("A13EventWriteFAILED: odr_auto_retry: \(error)")
-            return (
-                ok: false,
-                statusText: "WriteA13 odr_auto_retry: FAILED\n\(error.localizedDescription)",
-                alertMessage: error.localizedDescription
-            )
         }
+        print("A13EventWriteFAILED: odr_auto_retry")
+        return (
+            ok: false,
+            statusText: "WriteA13 odr_auto_retry: FAILED",
+            alertMessage: "Append failed. Check console for DiagnosticsAppendFAILED."
+        )
     }
 
     private func makeTestL3Prompt(key: String, title: String) -> Prompt {

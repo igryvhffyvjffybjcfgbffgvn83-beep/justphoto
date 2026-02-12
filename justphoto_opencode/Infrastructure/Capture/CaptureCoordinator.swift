@@ -254,20 +254,17 @@ private actor CapturePipeline {
         retryDelayMs: Int,
         verifiedWithin2s: Bool
     ) async {
-        await MainActor.run {
-            do {
-                _ = try DiagnosticsLogger().logPhotoWriteVerification(
-                    sessionId: sessionId,
-                    scene: scene,
-                    assetId: assetId,
-                    firstFetchMs: firstFetchMs,
-                    retryUsed: retryUsed,
-                    retryDelayMs: retryDelayMs,
-                    verifiedWithin2s: verifiedWithin2s
-                )
-            } catch {
-                JPDebugPrint("PhotoWriteVerificationLogFAILED: \(error)")
-            }
+        let result = await DiagnosticsEventWriter.shared.logPhotoWriteVerification(
+            sessionId: sessionId,
+            scene: scene,
+            assetId: assetId,
+            firstFetchMs: firstFetchMs,
+            retryUsed: retryUsed,
+            retryDelayMs: retryDelayMs,
+            verifiedWithin2s: verifiedWithin2s
+        )
+        if result == nil {
+            JPDebugPrint("PhotoWriteVerificationLogFAILED")
         }
     }
 

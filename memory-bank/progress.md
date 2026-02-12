@@ -153,6 +153,7 @@ Notes / Known limitations (track for later milestones):
 - [x] M6.12 Create CueEvaluator file (enter/warn/hard/exit)
 - [x] M6.12 Phase B — Cue Stability Layer
 - [x] M6.x Cancel semantics fix + DebugTools CancelSemanticsProbe
+- [x] M6.x DebugTools A13 restore (enable full DebugTools UI)
 - [ ] M6.13 Create CueSelector file (priority+severity+mutex per PoseSpec.defaults.selection)
 - [ ] M6.14 Create AntiJitterGate file (persistFrames/minHoldMs/cooldownMs)
 - [ ] M6.15 Create PraiseController file (PoseSpec.praisePolicy)

@@ -5,6 +5,8 @@ final class DiagnosticsLogger: Sendable {
 
     // Avoid DateFormatter (not thread-safe) because this type is used from
     // non-main executors (Swift 6 default isolation is MainActor).
+    private nonisolated static let appendLock = NSLock()
+
     private nonisolated static func dayStampUTC(_ now: Date) -> String {
         let tz = TimeZone(secondsFromGMT: 0) ?? .gmt
         var cal = Calendar(identifier: .gregorian)
@@ -52,6 +54,9 @@ final class DiagnosticsLogger: Sendable {
 
     @discardableResult
     nonisolated func appendJSONLine(_ jsonLine: String) throws -> (fileURL: URL, bytesBefore: Int64, bytesAfter: Int64) {
+        Self.appendLock.lock()
+        defer { Self.appendLock.unlock() }
+
         let url = try currentLogFileURL()
         let before = fileSizeBytes(at: url)
 
@@ -310,5 +315,135 @@ actor DiagnosticsEventWriter {
             payload: payload
         )
         append(event: e)
+    }
+
+    // MARK: - A.13 + raw append (serialized)
+
+    func appendJSONLine(_ jsonLine: String) -> (fileURL: URL, bytesBefore: Int64, bytesAfter: Int64)? {
+        do {
+            return try logger.appendJSONLine(jsonLine)
+        } catch {
+            JPDebugPrint("DiagnosticsAppendFAILED: raw_line: \(error)")
+            return nil
+        }
+    }
+
+    func logWithRefMatchState(
+        sessionId: String,
+        scene: String,
+        match: Bool,
+        requiredDimensions: [String],
+        blockedBy: [String],
+        mirrorApplied: Bool? = nil,
+        now: Date = .init()
+    ) -> (fileURL: URL, jsonLine: String)? {
+        do {
+            return try logger.logWithRefMatchState(
+                sessionId: sessionId,
+                scene: scene,
+                match: match,
+                requiredDimensions: requiredDimensions,
+                blockedBy: blockedBy,
+                mirrorApplied: mirrorApplied,
+                now: now
+            )
+        } catch {
+            JPDebugPrint("DiagnosticsAppendFAILED: withref_match_state: \(error)")
+            return nil
+        }
+    }
+
+    func logWithRefFallback(
+        sessionId: String,
+        scene: String,
+        reason: String,
+        missing: [String] = [],
+        now: Date = .init()
+    ) -> (fileURL: URL, jsonLine: String)? {
+        do {
+            return try logger.logWithRefFallback(
+                sessionId: sessionId,
+                scene: scene,
+                reason: reason,
+                missing: missing,
+                now: now
+            )
+        } catch {
+            JPDebugPrint("DiagnosticsAppendFAILED: withref_fallback: \(error)")
+            return nil
+        }
+    }
+
+    func logPhotoWriteVerification(
+        sessionId: String,
+        scene: String,
+        assetId: String,
+        firstFetchMs: Int,
+        retryUsed: Bool,
+        retryDelayMs: Int,
+        verifiedWithin2s: Bool,
+        now: Date = .init()
+    ) -> (fileURL: URL, jsonLine: String)? {
+        do {
+            return try logger.logPhotoWriteVerification(
+                sessionId: sessionId,
+                scene: scene,
+                assetId: assetId,
+                firstFetchMs: firstFetchMs,
+                retryUsed: retryUsed,
+                retryDelayMs: retryDelayMs,
+                verifiedWithin2s: verifiedWithin2s,
+                now: now
+            )
+        } catch {
+            JPDebugPrint("DiagnosticsAppendFAILED: photo_write_verification: \(error)")
+            return nil
+        }
+    }
+
+    func logPhantomAssetDetected(
+        sessionId: String,
+        scene: String,
+        assetIdHash: String,
+        authSnapshot: String,
+        healAction: String,
+        now: Date = .init()
+    ) -> (fileURL: URL, jsonLine: String)? {
+        do {
+            return try logger.logPhantomAssetDetected(
+                sessionId: sessionId,
+                scene: scene,
+                assetIdHash: assetIdHash,
+                authSnapshot: authSnapshot,
+                healAction: healAction,
+                now: now
+            )
+        } catch {
+            JPDebugPrint("DiagnosticsAppendFAILED: phantom_asset_detected: \(error)")
+            return nil
+        }
+    }
+
+    func logODRAutoRetry(
+        sessionId: String,
+        scene: String,
+        stateBefore: String,
+        debounceMs: Int,
+        result: String,
+        now: Date = .init()
+    ) -> (fileURL: URL, jsonLine: String)? {
+        do {
+            return try logger.logODRAutoRetry(
+                sessionId: sessionId,
+                scene: scene,
+                stateBefore: stateBefore,
+                debounceMs: debounceMs,
+                result: result,
+                now: now
+            )
+        } catch {
+            JPDebugPrint("DiagnosticsAppendFAILED: odr_auto_retry: \(error)")
+            return nil
+        }
     }
 }

@@ -62,16 +62,15 @@ actor PhantomAssetHealer {
             }
         }
         if let sessionSnapshot {
-            do {
-                _ = try DiagnosticsLogger().logPhantomAssetDetected(
-                    sessionId: sessionSnapshot.sessionId,
-                    scene: sessionSnapshot.scene,
-                    assetIdHash: hash,
-                    authSnapshot: authSnapshot,
-                    healAction: action.rawValue
-                )
-            } catch {
-                JPDebugPrint("PhantomAssetDetectedLogFAILED: \(error)")
+            let result = await DiagnosticsEventWriter.shared.logPhantomAssetDetected(
+                sessionId: sessionSnapshot.sessionId,
+                scene: sessionSnapshot.scene,
+                assetIdHash: hash,
+                authSnapshot: authSnapshot,
+                healAction: action.rawValue
+            )
+            if result == nil {
+                JPDebugPrint("PhantomAssetDetectedLogFAILED")
             }
         } else {
             JPDebugPrint("PhantomAssetDetectedLogSkipped: missing_session")
