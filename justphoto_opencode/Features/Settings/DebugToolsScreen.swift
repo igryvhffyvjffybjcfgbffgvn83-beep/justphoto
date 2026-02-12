@@ -1154,6 +1154,71 @@ struct DebugToolsScreen: View {
                     }
                 }
 
+                Button("M6.13 CueSelectorSingle") {
+                    if let result = CueSelectorDebug.validateSingleCandidate() {
+                        print("CueSelectorSingle: cueId=\(result.candidate.cueId) reason=\(result.reason)")
+                        statusText = "M6.13 CueSelectorSingle: OK\n\ncueId=\(result.candidate.cueId)\nreason=\(result.reason)"
+                        statusIsError = false
+                        alertTitle = "M6.13"
+                        alertMessage = "cueId=\(result.candidate.cueId)"
+                        showAlert = true
+                    } else {
+                        print("CueSelectorSingle: FAILED")
+                        statusText = "M6.13 CueSelectorSingle: FAILED"
+                        statusIsError = true
+                        alertTitle = "M6.13"
+                        alertMessage = "No result"
+                        showAlert = true
+                    }
+                }
+
+                Button("M6.13 CueSelectorNone") {
+                    let result = CueSelectorDebug.validateEmpty()
+                    let ok = (result == nil)
+                    print("CueSelectorNone: \(ok ? "OK" : "FAILED")")
+                    statusText = ok ? "M6.13 CueSelectorNone: OK\n\n(result=nil)" : "M6.13 CueSelectorNone: FAILED"
+                    statusIsError = !ok
+                    alertTitle = "M6.13"
+                    alertMessage = ok ? "result=nil" : "expected nil"
+                    showAlert = true
+                }
+
+                Button("M6.13 CueSelectorPriorityWins") {
+                    if let result = CueSelectorDebug.validatePriorityWins() {
+                        print("CueSelectorPriorityWins: cueId=\(result.candidate.cueId) reason=\(result.reason)")
+                        statusText = "M6.13 CueSelectorPriorityWins: OK\n\ncueId=\(result.candidate.cueId)\nreason=\(result.reason)"
+                        statusIsError = false
+                        alertTitle = "M6.13"
+                        alertMessage = "cueId=\(result.candidate.cueId)"
+                        showAlert = true
+                    } else {
+                        print("CueSelectorPriorityWins: FAILED")
+                        statusText = "M6.13 CueSelectorPriorityWins: FAILED"
+                        statusIsError = true
+                        alertTitle = "M6.13"
+                        alertMessage = "No result"
+                        showAlert = true
+                    }
+                }
+
+                Button("M6.13 CueSelectorSeverityWins") {
+                    if let result = CueSelectorDebug.validateSeverityBoostWins() {
+                        print("CueSelectorSeverityWins: cueId=\(result.candidate.cueId) reason=\(result.reason)")
+                        statusText = "M6.13 CueSelectorSeverityWins: OK\n\ncueId=\(result.candidate.cueId)\nreason=\(result.reason)"
+                        statusIsError = false
+                        alertTitle = "M6.13"
+                        alertMessage = "cueId=\(result.candidate.cueId)"
+                        showAlert = true
+                    } else {
+                        print("CueSelectorSeverityWins: FAILED")
+                        statusText = "M6.13 CueSelectorSeverityWins: FAILED"
+                        statusIsError = true
+                        alertTitle = "M6.13"
+                        alertMessage = "No result"
+                        showAlert = true
+                    }
+                }
+
                 Button("CreateWriteFailedItem") {
                     do {
                         let itemId = try SessionRepository.shared.insertWriteFailedItemAndFlush()
