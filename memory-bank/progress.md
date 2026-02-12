@@ -150,6 +150,7 @@ Notes / Known limitations (track for later milestones):
 - [x] M6.11 Create TierScheduler file (T0 15Hz / T1 2Hz)
 - [x] M6.11-4 Thermal degradation hook (pause T1, T0 -> 8Hz)
 - [x] M6.11-5 TierScheduler observability (1Hz aggregate perf logs)
+- [x] M6.12 T0 Vision async timeout (fail-open)
 - [x] M6.12 Create CueEvaluator file (enter/warn/hard/exit)
 - [x] M6.12 Phase B — Cue Stability Layer
 - [x] M6.x Cancel semantics fix + DebugTools CancelSemanticsProbe

@@ -1094,6 +1094,32 @@ struct DebugToolsScreen: View {
                     showAlert = true
                 }
 
+                Button("M6.12 VisionDelay=400ms (T0 timeout)") {
+                    Task {
+                        await VisionPipeline.shared.setDebugDelay(ms: 400)
+                        await MainActor.run {
+                            statusText = "M6.12 VisionDelay: set to 400ms"
+                            statusIsError = false
+                            alertTitle = "M6.12"
+                            alertMessage = "delay=400ms"
+                            showAlert = true
+                        }
+                    }
+                }
+
+                Button("M6.12 VisionDelay=default") {
+                    Task {
+                        await VisionPipeline.shared.setDebugDelay(ms: nil)
+                        await MainActor.run {
+                            statusText = "M6.12 VisionDelay: reset to default"
+                            statusIsError = false
+                            alertTitle = "M6.12"
+                            alertMessage = "delay=default"
+                            showAlert = true
+                        }
+                    }
+                }
+
                 Button("CreateWriteFailedItem") {
                     do {
                         let itemId = try SessionRepository.shared.insertWriteFailedItemAndFlush()

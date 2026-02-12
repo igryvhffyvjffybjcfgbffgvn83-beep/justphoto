@@ -72,6 +72,9 @@ actor VisionPipeline {
     // M6.8 Hotfix: observability + data-flow diagnostics.
     private var lastDebugPrintTsMs: Int = 0
     private var droppedFramesSinceLastPrint: Int = 0
+    #if DEBUG
+    private var debugDelayNs: UInt64? = nil
+    #endif
 
     func process(pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation) async -> VisionFrameResult? {
         if isProcessing {
@@ -80,6 +83,12 @@ actor VisionPipeline {
         }
         isProcessing = true
         defer { isProcessing = false }
+
+        #if DEBUG
+        if let delayNs = debugDelayNs {
+            try? await Task.sleep(nanoseconds: delayNs)
+        }
+        #endif
 
         let tsMs = Int(Date().timeIntervalSince1970 * 1000)
         let shouldPrint = (tsMs - lastDebugPrintTsMs) >= 1000
@@ -119,6 +128,16 @@ actor VisionPipeline {
         #endif
         return VisionFrameResult(pose: pose, face: face)
     }
+
+    #if DEBUG
+    func setDebugDelay(ms: Int?) {
+        if let ms {
+            debugDelayNs = UInt64(max(0, ms)) * 1_000_000
+        } else {
+            debugDelayNs = nil
+        }
+    }
+    #endif
 
     // M6.8 Hotfix (Relax Logic): if Vision produced an observation, return a non-nil pose.
     // Do NOT discard the entire pose due to confidence thresholds or missing core joints.
@@ -435,6 +454,7 @@ final class TierScheduler: ObservableObject {
         var t1Ticks: Int = 0
         var t0SkippedInFlight: Int = 0
         var t1SkippedInFlight: Int = 0
+        var t0SkippedTimeout: Int = 0
         var t0DurationSumNs: UInt64 = 0
         var t1DurationSumNs: UInt64 = 0
         var t0DurationMaxNs: UInt64 = 0
@@ -511,24 +531,34 @@ final class TierScheduler: ObservableObject {
 
         let gate = t0Gate
         t0Queue.async { [weak self] in
-            defer { gate.exit() }
-            guard let self else { return }
+            guard let self else {
+                gate.exit()
+                return
+            }
 
-            #if DEBUG
-            let startNs = DispatchTime.now().uptimeNanoseconds
-            #endif
+            // T0: run Vision on the latest frame only, without blocking the tier queue.
+            Task(priority: .userInitiated) { [weak self] in
+                guard let self else {
+                    gate.exit()
+                    return
+                }
+                defer { gate.exit() }
 
-            // T0: run Vision on the latest frame only.
-            let result = self.processVision(frame: frame)
-            guard let result else { return }
+                #if DEBUG
+                let startNs = DispatchTime.now().uptimeNanoseconds
+                #endif
 
-            self.storeLatestVision(pose: result.pose, face: result.face)
-            self.publishVision(result: result)
+                let result = await self.processVision(frame: frame)
+                guard let result else { return }
 
-            #if DEBUG
-            let endNs = DispatchTime.now().uptimeNanoseconds
-            self.recordDuration(tier: .t0, ns: endNs - startNs)
-            #endif
+                self.storeLatestVision(pose: result.pose, face: result.face)
+                self.publishVision(result: result)
+
+                #if DEBUG
+                let endNs = DispatchTime.now().uptimeNanoseconds
+                self.recordDuration(tier: .t0, ns: endNs - startNs)
+                #endif
+            }
         }
     }
 
@@ -600,18 +630,41 @@ final class TierScheduler: ObservableObject {
         return (latestPoseSnapshot, latestFaceSnapshot)
     }
 
-    private func processVision(frame: FramePacket) -> VisionFrameResult? {
-        let semaphore = DispatchSemaphore(value: 0)
-        var output: VisionFrameResult? = nil
+    private enum VisionOutcome {
+        case completed(VisionFrameResult?)
+        case timedOut
+    }
 
-        // Bridge async Vision pipeline into the serial T0 queue without blocking UI.
-        Task {
-            output = await VisionPipeline.shared.process(pixelBuffer: frame.pixelBuffer, orientation: frame.orientation)
-            semaphore.signal()
+    private let t0VisionTimeoutNs: UInt64 = 250_000_000
+
+    private func processVision(frame: FramePacket) async -> VisionFrameResult? {
+        let outcome = await withTaskGroup(of: VisionOutcome.self) { group in
+            group.addTask {
+                let result = await VisionPipeline.shared.process(
+                    pixelBuffer: frame.pixelBuffer,
+                    orientation: frame.orientation
+                )
+                return .completed(result)
+            }
+            group.addTask { [t0VisionTimeoutNs] in
+                try? await Task.sleep(nanoseconds: t0VisionTimeoutNs)
+                return .timedOut
+            }
+
+            let first = await group.next() ?? .timedOut
+            group.cancelAll()
+            return first
         }
 
-        semaphore.wait()
-        return output
+        switch outcome {
+        case .completed(let result):
+            return result
+        case .timedOut:
+            #if DEBUG
+            recordSkipTimeout(tier: .t0)
+            #endif
+            return nil
+        }
     }
 
     private func publishVision(result: VisionFrameResult) {
@@ -660,6 +713,17 @@ final class TierScheduler: ObservableObject {
             stats.t0SkippedInFlight += 1
         case .t1:
             stats.t1SkippedInFlight += 1
+        }
+        statsLock.unlock()
+    }
+
+    private func recordSkipTimeout(tier: Tier) {
+        statsLock.lock()
+        switch tier {
+        case .t0:
+            stats.t0SkippedTimeout += 1
+        case .t1:
+            break
         }
         statsLock.unlock()
     }
@@ -727,7 +791,7 @@ final class TierScheduler: ObservableObject {
 
         print(
             String(
-                format: "DEBUG_TIER_AGG: t0_hz=%d t1_hz=%d t0_avg_ms=%.2f t0_max_ms=%.2f t1_avg_ms=%.2f t1_max_ms=%.2f skippedBecauseInFlight_t0=%d skippedBecauseInFlight_t1=%d thermal=%d degraded=%@ t0_target_hz=%.1f t1_enabled=%@",
+                format: "DEBUG_TIER_AGG: t0_hz=%d t1_hz=%d t0_avg_ms=%.2f t0_max_ms=%.2f t1_avg_ms=%.2f t1_max_ms=%.2f skippedBecauseInFlight_t0=%d skippedBecauseInFlight_t1=%d t0_timeout=%d thermal=%d degraded=%@ t0_target_hz=%.1f t1_enabled=%@",
                 snapshot.t0Ticks,
                 snapshot.t1Ticks,
                 t0AvgMs,
@@ -736,6 +800,7 @@ final class TierScheduler: ObservableObject {
                 t1MaxMs,
                 snapshot.t0SkippedInFlight,
                 snapshot.t1SkippedInFlight,
+                snapshot.t0SkippedTimeout,
                 thermalState.rawValue,
                 degraded ? "true" : "false",
                 t0TargetHz,
