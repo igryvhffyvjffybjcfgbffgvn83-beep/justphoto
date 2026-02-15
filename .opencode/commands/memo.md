@@ -16,4 +16,4 @@
 3.  **验证 (Verify)**：
     *   确认文档已更新且 Git 工作区已干净 (Working tree clean)。
 
-最后告诉我：“✅ 记忆库已更新，代码已存档 (Commit ID: xxx)。
+最后告诉我：“✅ 记忆库已更新，代码已存档 (Commit ID: xxx)
