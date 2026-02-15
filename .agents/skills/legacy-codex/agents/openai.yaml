@@ -1,0 +1,3 @@
+version: 1
+assistant:
+  allow_implicit_invocation: false
