@@ -4,6 +4,7 @@ import Foundation
 import UIKit
 #endif
 
+@MainActor
 struct CameraScreen: View {
     @EnvironmentObject private var promptCenter: PromptCenter
     @Environment(\.openURL) private var openURL
@@ -11,7 +12,7 @@ struct CameraScreen: View {
     @StateObject private var warmup = WarmupTracker()
 
     @StateObject private var cameraFrames = CameraFrameSource()
-    @StateObject private var vision = TierScheduler()
+    @StateObject private var praiseController: PraiseController
 
     @State private var showingSettings = false
     @State private var showingPaywall = false
@@ -45,97 +46,77 @@ struct CameraScreen: View {
     @State private var selectedFilmstripItemId: String? = nil
     @State private var lastFilmstripCount: Int = 0
 
-#if DEBUG
-    private var visionDebugLine: String {
-        "poseDetected=\(vision.poseDetected)  faceDetected=\(vision.faceDetected)"
+    @State private var praiseMessage: String? = nil
+    @State private var praiseDismissTask: Task<Void, Never>? = nil
+
+    private let praiseAutoDismissNs: UInt64 = 5_000_000_000
+
+    init(praiseController: PraiseController) {
+        _praiseController = StateObject(wrappedValue: praiseController)
     }
-#endif
+
+    init() {
+        self.init(praiseController: PraiseController())
+    }
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 16) {
-                Text("Camera")
-                    .font(.title.bold())
+        ZStack {
+            CameraLivePreview(
+                cameraFrames: cameraFrames,
+                cameraAuth: cameraAuth,
+                warmupPhase: warmup.phase,
+                praiseMessage: praiseMessage
+            )
 
-                Text("MVP shell")
-                    .foregroundStyle(.secondary)
+            CameraControlsOverlay(
+                shutterGateResult: shutterGateResult,
+                poseSpecValid: poseSpecValid,
+                cameraPermissionDeclined: cameraPermissionDeclined,
+                filmstripItems: filmstripItems,
+                selectedFilmstripItemId: $selectedFilmstripItemId,
+                onSelectFilmstrip: { item in
+                    selectedFilmstripItemId = item.itemId
+                    showingPhotoViewer = true
+                    #if DEBUG
+                    print("FilmstripSelect: item_id=\(item.itemId) shot_seq=\(item.shotSeq)")
+                    #endif
+                },
+                onToggleLike: { item in
+                    DispatchQueue.global(qos: .utility).async {
+                        do {
+                            let nextLiked = !item.liked
+                            _ = try SessionRepository.shared.setLiked(itemId: item.itemId, liked: nextLiked)
 
-                previewArea
-
-                if !filmstripItems.isEmpty {
-                    Filmstrip(
-                        items: filmstripItems,
-                        selectedItemId: $selectedFilmstripItemId,
-                        onSelect: { item in
-                            selectedFilmstripItemId = item.itemId
-                            showingPhotoViewer = true
-                            #if DEBUG
-                            print("FilmstripSelect: item_id=\(item.itemId) shot_seq=\(item.shotSeq)")
-                            #endif
-                        },
-                        onToggleLike: { item in
-                            DispatchQueue.global(qos: .utility).async {
-                                do {
-                                    let nextLiked = !item.liked
-                                    _ = try SessionRepository.shared.setLiked(itemId: item.itemId, liked: nextLiked)
-
-                                    DispatchQueue.main.async {
-                                        NotificationCenter.default.post(name: CaptureEvents.sessionItemsChanged, object: nil)
-                                        Task {
-                                            let r = await FavoriteSyncer.shared.syncFavoriteIfPossible(
-                                                assetLocalIdentifier: item.assetId,
-                                                isFavorite: nextLiked
-                                            )
-                                            if r == .failed {
-                                                await MainActor.run { self.maybeShowFavoriteSyncFailedBanner() }
-                                            }
-                                        }
-                                    }
-                                } catch {
-                                    DispatchQueue.main.async {
-                                        JPDebugPrint("FilmstripToggleLikeFAILED: item_id=\(item.itemId) error=\(error)")
+                            DispatchQueue.main.async {
+                                NotificationCenter.default.post(name: CaptureEvents.sessionItemsChanged, object: nil)
+                                Task {
+                                    let r = await FavoriteSyncer.shared.syncFavoriteIfPossible(
+                                        assetLocalIdentifier: item.assetId,
+                                        isFavorite: nextLiked
+                                    )
+                                    if r == .failed {
+                                        await MainActor.run { self.maybeShowFavoriteSyncFailedBanner() }
                                     }
                                 }
                             }
+                        } catch {
+                            DispatchQueue.main.async {
+                                JPDebugPrint("FilmstripToggleLikeFAILED: item_id=\(item.itemId) error=\(error)")
+                            }
                         }
-                    )
-                    .frame(height: 66)
-                    .padding(.top, -6)
-                }
-
-                Button("Shutter") {
-                    CaptureCoordinator.shared.shutterTapped()
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!shutterGateResult.isEnabled || !poseSpecValid)
-
-#if DEBUG
-                Button("ExplainShutterDisabledReason") {
-                    let r = shutterGateResult
-                    if r.isEnabled {
-                        print("ShutterEnabled")
-                    } else {
-                        print("ShutterDisabled:\(r.reason?.rawValue ?? "unknown")")
                     }
-                    print("ShutterGateDebug: \(r.debugDescription)")
-                }
-                .buttonStyle(.bordered)
-#endif
-
-                if cameraPermissionDeclined {
-                    Text("Camera permission not requested (declined).")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-
-                HStack(spacing: 12) {
-                    Button("Settings") { showingSettings = true }
-                    Button("Paywall") { showingPaywall = true }
-                    Button("Inspiration") { showingInspiration = true }
-                }
-
-#if DEBUG
-                Button("ShowTestToast (Camera)") {
+                },
+                onShutterTapped: {
+                    handleShutterTapped()
+                },
+                onSettings: { showingSettings = true },
+                onPaywall: { showingPaywall = true },
+                onInspiration: { showingInspiration = true },
+                onViewer: { showingViewer = true },
+                onWrap: { showingWrapSheet = true },
+                onDownReasons: { showingDownReasons = true },
+                onClearPraise: { praiseController.clearPraise() },
+                onShowTestToast: {
                     promptCenter.show(
                         Prompt(
                             key: "debug_toast_camera",
@@ -164,24 +145,12 @@ struct CameraScreen: View {
                             emittedAt: Date()
                         )
                     )
-                }
-                .buttonStyle(.bordered)
-#endif
-
-                HStack(spacing: 12) {
-                    NavigationLink("Viewer") { ViewerScreen() }
-                    NavigationLink("Wrap") { WrapScreen() }
-                    Button("Down Reasons") { showingDownReasons = true }
-                }
-
-                Spacer(minLength: 0)
-            }
-            .padding()
-            .navigationTitle("Just Photo")
+                },
+                onDebugTriggerPraise: { praiseController.debugTriggerExitCrossed() }
+            )
         }
         .task {
             checkPoseSpecOrBlock()
-            configureCameraFrameHookIfNeeded()
             refreshCameraAuth()
             refreshWarmupState()
             updateCameraFrameSourceRunning()
@@ -208,6 +177,9 @@ struct CameraScreen: View {
         }
         .onChange(of: warmup.phase) { _, _ in
             refreshSessionCounts()
+        }
+        .onChange(of: praiseController.latestSignal?.id) { _, _ in
+            handlePraiseSignalChange()
         }
         .onChange(of: showingSettings) { _, newValue in
             if !newValue {
@@ -512,6 +484,37 @@ struct CameraScreen: View {
         promptCenter.show(makeFavoriteSyncFailedBannerPrompt())
     }
 
+    private func handleShutterTapped() {
+        clearPraiseUI()
+        praiseController.clearPraise()
+        CaptureCoordinator.shared.shutterTapped()
+    }
+
+    private func handlePraiseSignalChange() {
+        guard let signal = praiseController.latestSignal else {
+            clearPraiseUI()
+            return
+        }
+        startPraiseCountdown(message: signal.message)
+    }
+
+    private func startPraiseCountdown(message: String) {
+        praiseMessage = message
+        praiseDismissTask?.cancel()
+        praiseDismissTask = Task {
+            try? await Task.sleep(nanoseconds: praiseAutoDismissNs)
+            await MainActor.run {
+                praiseController.clearPraise()
+            }
+        }
+    }
+
+    private func clearPraiseUI() {
+        praiseDismissTask?.cancel()
+        praiseDismissTask = nil
+        praiseMessage = nil
+    }
+
     private func maybeShowCameraPermissionPreprompt() {
         guard !didShowCameraPermissionPreprompt else { return }
         guard cameraAuth == .not_determined else { return }
@@ -555,13 +558,6 @@ struct CameraScreen: View {
                     self.promptCenter.show(self.makePoseSpecInvalidPrompt(error: error, expectedPrdVersion: expectedPrdVersion))
                 }
             }
-        }
-    }
-
-    private func configureCameraFrameHookIfNeeded() {
-        if cameraFrames.onFrame != nil { return }
-        cameraFrames.onFrame = { pixelBuffer, orientation in
-            vision.offer(pixelBuffer: pixelBuffer, orientation: orientation)
         }
     }
 
@@ -901,106 +897,6 @@ struct CameraScreen: View {
                 writeFailedCount: writeFailedCount
             )
         )
-    }
-
-    private var previewArea: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [Color(.systemGray6), Color(.systemGray5)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(.black.opacity(0.06), lineWidth: 1)
-                )
-
-            if cameraAuth == .authorized, cameraFrames.state != .failed {
-                CameraPreviewView(
-                    session: cameraFrames.session,
-                    debugROIs: ROIComputer.compute(pose: vision.lastPose, face: vision.lastFace)
-                )
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            }
-
-            VStack(spacing: 8) {
-                switch cameraAuth {
-                case .authorized:
-                    if cameraFrames.state == .failed {
-                        Text("No camera preview")
-                            .font(.headline)
-                        Text("Camera init failed")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("Camera preview")
-                            .font(.headline)
-                        #if DEBUG
-                        Text(visionDebugLine)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        #endif
-                    }
-                case .denied:
-                    Text("No camera preview")
-                        .font(.headline)
-                    Text("Permission denied")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                case .restricted:
-                    Text("No camera preview")
-                        .font(.headline)
-                    Text("Restricted by system")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                case .not_determined:
-                    Text("Camera permission")
-                        .font(.headline)
-                    Text("Not requested")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding()
-
-            if cameraAuth == .authorized, warmup.phase != .ready {
-                warmupOverlay
-                    .transition(.opacity)
-            }
-        }
-        .frame(height: 360)
-    }
-
-    private var warmupOverlay: some View {
-        let message: String
-        switch warmup.phase {
-        case .warming:
-            message = "相机准备中…"
-        case .upgraded:
-            message = "相机准备中…（可能需要几秒）"
-        case .failed:
-            message = "相机初始化失败"
-        case .idle, .ready:
-            message = ""
-        }
-
-        return VStack(spacing: 10) {
-            ProgressView()
-                .tint(.white)
-            Text(message)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.white)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.black.opacity(0.72))
-        )
-        .padding(16)
     }
 
     private func makeWarmupFailedPrompt() -> Prompt {
@@ -1494,6 +1390,296 @@ struct CameraScreen: View {
             ],
             emittedAt: Date()
         )
+    }
+}
+
+private struct CameraLivePreview: View {
+    @ObservedObject var cameraFrames: CameraFrameSource
+    let cameraAuth: CameraAuth
+    let warmupPhase: WarmupPhase
+    let praiseMessage: String?
+
+    @StateObject private var vision = TierScheduler()
+
+#if DEBUG
+    private var visionDebugLine: String {
+        "poseDetected=\(vision.poseDetected)  faceDetected=\(vision.faceDetected)"
+    }
+#endif
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.92)
+
+            if cameraAuth == .authorized, cameraFrames.state != .failed {
+                CameraPreviewView(
+                    session: cameraFrames.session,
+                    debugROIs: vision.lastROIs
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea()
+            }
+
+            if cameraAuth != .authorized || cameraFrames.state == .failed {
+                VStack(spacing: 8) {
+                    switch cameraAuth {
+                    case .authorized:
+                        Text("No camera preview")
+                            .font(.headline)
+                        Text("Camera init failed")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    case .denied:
+                        Text("No camera preview")
+                            .font(.headline)
+                        Text("Permission denied")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    case .restricted:
+                        Text("No camera preview")
+                            .font(.headline)
+                        Text("Restricted by system")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    case .not_determined:
+                        Text("Camera permission")
+                            .font(.headline)
+                        Text("Not requested")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.black.opacity(0.4))
+                )
+                .padding(.horizontal, 16)
+            } else {
+                #if DEBUG
+                Text(visionDebugLine)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule(style: .circular)
+                            .fill(Color.black.opacity(0.35))
+                    )
+                    .padding(.top, 12)
+                    .zIndex(5)
+                #endif
+            }
+
+            if cameraAuth == .authorized, warmupPhase != .ready {
+                warmupOverlay
+                    .transition(.opacity)
+                    .zIndex(10)
+            }
+
+            if let message = praiseMessage {
+                praiseOverlay(message: message)
+                    .transition(.opacity)
+                    .zIndex(12)
+            }
+        }
+        .ignoresSafeArea()
+        .onAppear {
+            configureFrameHookIfNeeded()
+        }
+    }
+
+    private func configureFrameHookIfNeeded() {
+        if cameraFrames.onFrame != nil { return }
+        cameraFrames.onFrame = { pixelBuffer, orientation in
+            vision.offer(pixelBuffer: pixelBuffer, orientation: orientation)
+        }
+    }
+
+    private var warmupOverlay: some View {
+        let message: String
+        switch warmupPhase {
+        case .warming:
+            message = "相机准备中…"
+        case .upgraded:
+            message = "相机准备中…（可能需要几秒）"
+        case .failed:
+            message = "相机初始化失败"
+        case .idle, .ready:
+            message = ""
+        }
+
+        return VStack(spacing: 10) {
+            ProgressView()
+                .tint(.white)
+            Text(message)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.white)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(.black.opacity(0.72))
+        )
+        .padding(16)
+    }
+
+    private func praiseOverlay(message: String) -> some View {
+        Text(message)
+            .font(.title3.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
+            .background(
+                Capsule(style: .circular)
+                    .fill(.black.opacity(0.72))
+            )
+            .padding(16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+    }
+}
+
+private struct CameraControlsOverlay: View {
+    let shutterGateResult: SessionRuleGate.Result
+    let poseSpecValid: Bool
+    let cameraPermissionDeclined: Bool
+    let filmstripItems: [SessionRepository.SessionItemSummary]
+    @Binding var selectedFilmstripItemId: String?
+    let onSelectFilmstrip: (SessionRepository.SessionItemSummary) -> Void
+    let onToggleLike: (SessionRepository.SessionItemSummary) -> Void
+    let onShutterTapped: () -> Void
+    let onSettings: () -> Void
+    let onPaywall: () -> Void
+    let onInspiration: () -> Void
+    let onViewer: () -> Void
+    let onWrap: () -> Void
+    let onDownReasons: () -> Void
+    let onClearPraise: () -> Void
+    let onShowTestToast: () -> Void
+    let onDebugTriggerPraise: () -> Void
+
+    var body: some View {
+        Color.clear
+            .overlay(alignment: .topLeading) {
+#if DEBUG
+                Button("Trigger Praise") {
+                    onDebugTriggerPraise()
+                }
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.black.opacity(0.6))
+                .foregroundColor(.white)
+                .clipShape(Capsule(style: .circular))
+                .padding(12)
+                .zIndex(30)
+#endif
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                topControlBar
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                bottomControlBar
+            }
+    }
+
+    private var topControlBar: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Just Photo")
+                    .font(.headline.weight(.semibold))
+                Text("Camera")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+
+            Spacer(minLength: 0)
+
+            Button("Settings") { onSettings() }
+            Button("Paywall") { onPaywall() }
+            Button("Inspiration") { onInspiration() }
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color.black.opacity(0.4), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(.white.opacity(0.15), lineWidth: 1)
+        )
+        .padding(.horizontal, 16)
+        .padding(.top, 6)
+    }
+
+    private var bottomControlBar: some View {
+        VStack(spacing: 12) {
+            if !filmstripItems.isEmpty {
+                Filmstrip(
+                    items: filmstripItems,
+                    selectedItemId: $selectedFilmstripItemId,
+                    onSelect: { item in
+                        onSelectFilmstrip(item)
+                    },
+                    onToggleLike: { item in
+                        onToggleLike(item)
+                    }
+                )
+                .frame(height: 66)
+            }
+
+            Button("Shutter") {
+                onShutterTapped()
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!shutterGateResult.isEnabled || !poseSpecValid)
+
+            if cameraPermissionDeclined {
+                Text("Camera permission not requested (declined).")
+                    .font(.footnote)
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+
+            HStack(spacing: 12) {
+                Button("Viewer") { onViewer() }
+                Button("Wrap") { onWrap() }
+                Button("Down Reasons") { onDownReasons() }
+            }
+
+#if DEBUG
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    Button("ExplainShutterDisabledReason") {
+                        if shutterGateResult.isEnabled {
+                            print("ShutterEnabled")
+                        } else {
+                            print("ShutterDisabled:\(shutterGateResult.reason?.rawValue ?? "unknown")")
+                        }
+                        print("ShutterGateDebug: \(shutterGateResult.debugDescription)")
+                    }
+
+                    Button("ClearPraise") {
+                        onClearPraise()
+                    }
+
+                    Button("ShowTestToast") {
+                        onShowTestToast()
+                    }
+                }
+                .buttonStyle(.bordered)
+            }
+#endif
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Color.black.opacity(0.4), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(.white.opacity(0.15), lineWidth: 1)
+        )
+        .padding(.horizontal, 12)
+        .padding(.bottom, 10)
     }
 }
 

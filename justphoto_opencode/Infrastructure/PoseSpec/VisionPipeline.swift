@@ -383,6 +383,7 @@ final class TierScheduler: ObservableObject {
 
     @Published private(set) var lastPose: VisionPoseResult? = nil
     @Published private(set) var lastFace: VisionFaceResult? = nil
+    @Published private(set) var lastROIs: ROISet? = nil
 
     private struct FramePacket {
         let pixelBuffer: CVPixelBuffer
@@ -551,8 +552,9 @@ final class TierScheduler: ObservableObject {
                 let result = await self.processVision(frame: frame)
                 guard let result else { return }
 
+                let rois = ROIComputer.compute(pose: result.pose, face: result.face)
                 self.storeLatestVision(pose: result.pose, face: result.face)
-                self.publishVision(result: result)
+                self.publishVision(result: result, rois: rois)
 
                 #if DEBUG
                 let endNs = DispatchTime.now().uptimeNanoseconds
@@ -667,7 +669,7 @@ final class TierScheduler: ObservableObject {
         }
     }
 
-    private func publishVision(result: VisionFrameResult) {
+    private func publishVision(result: VisionFrameResult, rois: ROISet?) {
         let tsMs = nowMs()
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
@@ -679,6 +681,7 @@ final class TierScheduler: ObservableObject {
 
             self.lastPose = result.pose
             self.lastFace = result.face
+            self.lastROIs = rois
 
             #if DEBUG
             if tsMs - self.lastConsolePrintTsMs >= 1000 {
