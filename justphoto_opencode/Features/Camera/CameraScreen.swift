@@ -64,8 +64,7 @@ struct CameraScreen: View {
             CameraLivePreview(
                 cameraFrames: cameraFrames,
                 cameraAuth: cameraAuth,
-                warmupPhase: warmup.phase,
-                praiseMessage: praiseMessage
+                warmupPhase: warmup.phase
             )
 
             CameraControlsOverlay(
@@ -148,6 +147,11 @@ struct CameraScreen: View {
                 },
                 onDebugTriggerPraise: { praiseController.debugTriggerExitCrossed() }
             )
+
+            if let message = praiseMessage {
+                PraiseOverlayView(message: message)
+                    .zIndex(20)
+            }
         }
         .task {
             checkPoseSpecOrBlock()
@@ -1397,7 +1401,6 @@ private struct CameraLivePreview: View {
     @ObservedObject var cameraFrames: CameraFrameSource
     let cameraAuth: CameraAuth
     let warmupPhase: WarmupPhase
-    let praiseMessage: String?
 
     @StateObject private var vision = TierScheduler()
 
@@ -1477,11 +1480,6 @@ private struct CameraLivePreview: View {
                     .zIndex(10)
             }
 
-            if let message = praiseMessage {
-                praiseOverlay(message: message)
-                    .transition(.opacity)
-                    .zIndex(12)
-            }
         }
         .ignoresSafeArea()
         .onAppear {
@@ -1525,7 +1523,12 @@ private struct CameraLivePreview: View {
         .padding(16)
     }
 
-    private func praiseOverlay(message: String) -> some View {
+}
+
+private struct PraiseOverlayView: View {
+    let message: String
+
+    var body: some View {
         Text(message)
             .font(.title3.weight(.semibold))
             .foregroundStyle(.white)

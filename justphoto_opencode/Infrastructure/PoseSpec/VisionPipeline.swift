@@ -416,6 +416,9 @@ final class TierScheduler: ObservableObject {
     private var latestPoseSnapshot: VisionPoseResult? = nil
     private var latestFaceSnapshot: VisionFaceResult? = nil
 
+    private let roiLock = NSLock()
+    private var cachedROIs: ROISet? = nil
+
     private let t0Gate = InFlightGate()
     private let t1Gate = InFlightGate()
 
@@ -553,6 +556,7 @@ final class TierScheduler: ObservableObject {
                 guard let result else { return }
 
                 let rois = ROIComputer.compute(pose: result.pose, face: result.face)
+                self.storeLatestROIs(rois)
                 self.storeLatestVision(pose: result.pose, face: result.face)
                 self.publishVision(result: result, rois: rois)
 
@@ -590,7 +594,11 @@ final class TierScheduler: ObservableObject {
 
             // T1: use the most recent Vision outputs + latest frame for frame/ROI metrics.
             let (pose, face) = self.latestVisionSnapshot()
-            let rois = ROIComputer.compute(pose: pose, face: face)
+            var rois = self.cachedROIsSnapshot()
+            if rois == nil {
+                rois = ROIComputer.compute(pose: pose, face: face)
+                self.storeLatestROIs(rois)
+            }
 
             #if DEBUG
             print("DEBUG_T1: Context has buffer? true rois? \((rois != nil) ? "true" : "false")")
@@ -630,6 +638,18 @@ final class TierScheduler: ObservableObject {
         latestVisionLock.lock()
         defer { latestVisionLock.unlock() }
         return (latestPoseSnapshot, latestFaceSnapshot)
+    }
+
+    private func storeLatestROIs(_ rois: ROISet?) {
+        roiLock.lock()
+        cachedROIs = rois
+        roiLock.unlock()
+    }
+
+    private func cachedROIsSnapshot() -> ROISet? {
+        roiLock.lock()
+        defer { roiLock.unlock() }
+        return cachedROIs
     }
 
     private enum VisionOutcome {
