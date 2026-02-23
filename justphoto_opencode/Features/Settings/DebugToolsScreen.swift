@@ -1130,6 +1130,35 @@ struct DebugToolsScreen: View {
                     showAlert = true
                 }
 
+                Button {
+                    guard !isRefTargetRunning else { return }
+                    isRefTargetRunning = true
+                    statusText = "M6.16 RefTargetExtractor: running..."
+                    statusIsError = false
+                    print("M6.16 RefTargetExtractor: start")
+
+                    Task {
+                        let result = await runRefTargetExtractorDebug()
+                        await MainActor.run {
+                            isRefTargetRunning = false
+                            statusText = result.statusText
+                            statusIsError = !result.ok
+                            alertTitle = result.ok ? "M6.16 RefTargetExtractor" : "M6.16 RefTargetExtractor failed"
+                            alertMessage = result.alertMessage
+                            showAlert = true
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Text("M6.16 RunRefTargetExtractor")
+                        Spacer()
+                        if isRefTargetRunning {
+                            ProgressView()
+                        }
+                    }
+                }
+                .disabled(isRefTargetRunning)
+
                 Button("M6.12 VisionDelay=400ms (T0 timeout)") {
                     Task {
                         await VisionPipeline.shared.setDebugDelay(ms: 400)
