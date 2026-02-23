@@ -435,8 +435,31 @@ M6.14 Create AntiJitterGate file (persistFrames/minHoldMs/cooldownMs)
 - Verify: Near-threshold movement does not cause rapid cue switching; cue stays >=3s; cooldown prevents immediate re-trigger.
 
 M6.15 Create PraiseController file (PoseSpec.praisePolicy)
-- Do: Trigger praise on exit_crossed; cooldown 10s per mutexGroup; freeze “就现在！按快门” for 5s or until shutter tap.
-- Verify: When conditions cross exit, UI shows “就现在！按快门”; tapping shutter clears immediately; otherwise clears after 5s.
+- Phase 1 [内核层/纯逻辑] (必须)
+  - Task-Logic: 定义 PraisePolicy/PraiseState/PraiseOutput 与 PraiseController 状态机。
+    - 规则：exit_crossed 触发；同一 mutexGroup 10s 冷却；冻结脚本 5s 或 shutter_tap 解除。
+  - Task-Test: 单元测试覆盖：
+    - Happy Path：exit_crossed -> freeze -> timeout 5s 解除
+    - Edge Cases：冷却期内不重复触发；shutter_tap 立即解除；重复 exit 不抖动
+  - Verification Instruction:
+    - 运行 XCTest，验证 cooldown/timeout/shutter_tap 三类路径。
+
+- Phase 2 [数据/胶水层] (按需)
+  - Task-Glue: 将 CueSelector/CueEvaluator 的 exit_crossed 事件转换为 PraiseController 事件。
+  - Task-Glue: 将 shutter_tap 转换为 PraiseController 事件，确保冻结立即解除。
+  - Verification Instruction:
+    - DebugTools/Console 输出 Praise 状态变化（freeze/unfreeze/cooldown）。
+
+- Phase 3 [UI/交互层] (最后)
+  - Task-UI: 将 PraiseOutput 绑定到 Camera UI（显示“就现在！按快门”）。
+  - Task-UI: 处理安静模式与 UI 折叠策略（若已有脚本卡/夸夸 overlay）。
+  - Verification Instruction:
+    - 真机/模拟器运行，exit_crossed 时 UI 立即锁定；5s 超时解除；shutter 立即解除。
+
+- Phase 4 [集成验收] (收尾)
+  - Task-Verify: 联调完整拍摄链路，确认“UI 安静但不达标”不发生。
+  - Verification Instruction:
+    - 手工脚本：接近阈值抖动时不重复夸夸；满足 exit 才触发；冷却期内不重复。
 
 ### withRef (target extraction + mirror + match-blocked-by logs)
 

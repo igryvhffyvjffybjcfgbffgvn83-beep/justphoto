@@ -144,6 +144,34 @@ M4.4 (Workset full flow):
   - Cue stability (M6.12 Phase B):
     - `justphoto_opencode/Infrastructure/PoseSpec/CueStabilityLayer.swift` applies frame-count stability (hard/exit require 2 consecutive frames).
     - `justphoto_opencode/Features/Settings/DebugToolsScreen.swift` prints `stableFrameCount` and `stabilityState` for injected evaluation.
+  - Praise controller (M6.15):
+    - Core API contract (parallel dev contract; implementation must honor PoseSpec.praisePolicy):
+      ```swift
+      protocol PraiseControlling {
+          func reset()
+          // Called when a cue crosses exit; mutexGroup is used for cooldown.
+          func handleExitCrossed(cueId: String, mutexGroup: String, timestampMs: Int) -> PraiseOutput
+          // Called on shutter tap to unfreeze immediately.
+          func handleShutterTap(timestampMs: Int) -> PraiseOutput
+          // Called periodically to resolve timeout-based unfreeze.
+          func tick(timestampMs: Int) -> PraiseOutput
+          var state: PraiseState { get }
+      }
+
+      struct PraiseState {
+          var frozenUntilMs: Int?
+          var lastPraiseByMutexGroup: [String: Int]
+          var frozenScriptZh: String?
+      }
+
+      struct PraiseOutput {
+          let isFrozen: Bool
+          let scriptZh: String?   // “就现在！按快门” during freeze
+          let reason: String      // freeze / unfreeze / cooldown / noop
+      }
+      ```
+    - Required behavior:
+      - exit_crossed triggers freeze; cooldown 10s per mutexGroup; freeze auto-times out at 5s or on shutter tap.
   - Cancel semantics probe (M6.x):
     - `justphoto_opencode/Infrastructure/Camera/WarmupState.swift` adds a DEBUG-only cancel probe to verify warmup cancellation safety.
     - `justphoto_opencode/Infrastructure/Capture/CaptureCoordinator.swift` adds a DEBUG-only cancel probe for deadline cancellation.
