@@ -162,7 +162,7 @@ Notes / Known limitations (track for later milestones):
 - [x] M6.14 Phase 1 AntiJitterGate state machine
 - [x] M6.14 Phase 2 AntiJitterGate integration + jitter logs
 - [x] M6.15 Create PraiseController file (PoseSpec.praisePolicy)
-- [ ] M6.16 Create RefTargetExtractor file (compute target outputs from ref image) [Task-Logic/Task-Glue/Task-Test]
+- [x] M6.16 Create RefTargetExtractor file (compute target outputs from ref image) [Task-Logic/Task-Glue/Task-Test]
 - [ ] M6.17 Store RefTarget in session-scoped storage (and clear on reset)
 - [ ] M6.18 Create MirrorEvaluator (x=0.5)
 - [ ] M6.19 Create MatchDecider = “PoseSpec exit equivalence” (PRD 5.1.1.a)

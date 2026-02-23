@@ -131,6 +131,8 @@ M4.4 (Workset full flow):
   - T1 frame metrics (M6.10 Phase 4):
     - `justphoto_opencode/Infrastructure/PoseSpec/FrameMetricComputer.swift` computes pixel metrics (e.g. `faceLumaMean`) from `CVPixelBuffer` via Accelerate/vImage with 2Hz throttling.
     - `justphoto_opencode/Infrastructure/PoseSpec/MetricComputer.swift` merges T1 outputs; `VisionPipeline` injects `pixelBuffer` and ROIs into `MetricContext`.
+  - Ref target extractor (M6.16):
+    - `justphoto_opencode/Infrastructure/PoseSpec/RefTargetExtractor.swift` extracts `target.*` metrics from reference input; supports CGImage and CVPixelBuffer entry points for static/live debug flows.
   - Tier scheduler (M6.11):
     - `justphoto_opencode/Infrastructure/PoseSpec/VisionPipeline.swift` defines `TierScheduler` with a latest-frame gate, T0 (15Hz) + T1 (2Hz) timers, per-tier serial queues, and in-flight skip gates.
     - `justphoto_opencode/Features/Camera/CameraScreen.swift` sends camera frames to `TierScheduler` (O(1) cache in the frame callback).

@@ -150,6 +150,7 @@ struct CameraScreen: View {
 
             if let message = praiseMessage {
                 PraiseOverlayView(message: message)
+                    .allowsHitTesting(false)
                     .zIndex(20)
             }
         }
@@ -1470,6 +1471,7 @@ private struct CameraLivePreview: View {
                             .fill(Color.black.opacity(0.35))
                     )
                     .padding(.top, 12)
+                    .allowsHitTesting(false)
                     .zIndex(5)
                 #endif
             }
@@ -1477,6 +1479,7 @@ private struct CameraLivePreview: View {
             if cameraAuth == .authorized, warmupPhase != .ready {
                 warmupOverlay
                     .transition(.opacity)
+                    .allowsHitTesting(false)
                     .zIndex(10)
             }
 
