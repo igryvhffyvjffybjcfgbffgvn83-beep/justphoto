@@ -25,8 +25,13 @@ enum RefTargetExtractor {
             return nil
         }
 
+        return await extract(pixelBuffer: pixelBuffer, orientation: effectiveOrientation)
+    }
+
+    // Live-frame extraction: bypass CGImage conversion.
+    static func extract(pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation) async -> RefTargetOutput? {
         let pipeline = VisionPipeline()
-        let vision = await pipeline.process(pixelBuffer: pixelBuffer, orientation: effectiveOrientation)
+        let vision = await pipeline.process(pixelBuffer: pixelBuffer, orientation: orientation)
 
         let pose = vision?.pose
         let face = vision?.face
@@ -39,7 +44,7 @@ enum RefTargetExtractor {
                 face: face,
                 rois: rois,
                 pixelBuffer: pixelBuffer,
-                orientation: effectiveOrientation
+                orientation: orientation
             )
         )
 

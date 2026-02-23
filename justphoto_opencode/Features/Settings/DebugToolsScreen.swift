@@ -14,6 +14,7 @@ struct DebugToolsScreen: View {
     @State private var statusIsError: Bool = false
     @State private var isRunning: Bool = false
     @State private var isRefTargetRunning: Bool = false
+    @State private var isRefTargetLiveRunning: Bool = false
 
     @State private var showAlert: Bool = false
     @State private var alertTitle: String = ""
@@ -1159,6 +1160,42 @@ struct DebugToolsScreen: View {
                 }
                 .disabled(isRefTargetRunning)
 
+                Button {
+                    guard !isRefTargetLiveRunning else { return }
+                    isRefTargetLiveRunning = true
+                    statusText = "M6.16 RefTargetExtractor (live): running..."
+                    statusIsError = false
+                    print("M6.16 RefTargetExtractor (live): start")
+
+                    Task {
+                        let result = await runRefTargetExtractorLiveDebug()
+                        await MainActor.run {
+                            isRefTargetLiveRunning = false
+                            statusText = result.statusText
+                            statusIsError = !result.ok
+                            alertTitle = result.ok ? "M6.16 RefTargetExtractor (live)" : "M6.16 RefTargetExtractor (live) failed"
+                            alertMessage = result.alertMessage
+                            showAlert = true
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Text("M6.16 Run On Live Frame")
+                        Spacer()
+                        if isRefTargetLiveRunning {
+                            ProgressView()
+                        }
+                    }
+                }
+                .disabled(isRefTargetLiveRunning)
+
+                if statusText.hasPrefix("M6.16") {
+                    Text(statusText)
+                        .font(.footnote)
+                        .foregroundStyle(statusIsError ? .red : .secondary)
+                        .textSelection(.enabled)
+                }
+
                 Button("M6.12 VisionDelay=400ms (T0 timeout)") {
                     Task {
                         await VisionPipeline.shared.setDebugDelay(ms: 400)
@@ -1567,6 +1604,42 @@ struct DebugToolsScreen: View {
                     }
                 }
                 .disabled(isRefTargetRunning)
+
+                Button {
+                    guard !isRefTargetLiveRunning else { return }
+                    isRefTargetLiveRunning = true
+                    statusText = "M6.16 RefTargetExtractor (live): running..."
+                    statusIsError = false
+                    print("M6.16 RefTargetExtractor (live): start")
+
+                    Task {
+                        let result = await runRefTargetExtractorLiveDebug()
+                        await MainActor.run {
+                            isRefTargetLiveRunning = false
+                            statusText = result.statusText
+                            statusIsError = !result.ok
+                            alertTitle = result.ok ? "M6.16 RefTargetExtractor (live)" : "M6.16 RefTargetExtractor (live) failed"
+                            alertMessage = result.alertMessage
+                            showAlert = true
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Text("M6.16 Run On Live Frame")
+                        Spacer()
+                        if isRefTargetLiveRunning {
+                            ProgressView()
+                        }
+                    }
+                }
+                .disabled(isRefTargetLiveRunning)
+
+                if statusText.hasPrefix("M6.16") {
+                    Text(statusText)
+                        .font(.footnote)
+                        .foregroundStyle(statusIsError ? .red : .secondary)
+                        .textSelection(.enabled)
+                }
             }
 
             Section("Diagnostics") {
@@ -1862,7 +1935,7 @@ struct DebugToolsScreen: View {
             )
         }
 
-        let summary = formatMetricOutputs(output.metrics)
+        let summary = Self.formatMetricOutputs(output.metrics)
         print("M6.16 RefTargetExtractor: metrics_count=\(output.metrics.count)")
         print(summary)
 
@@ -1871,6 +1944,12 @@ struct DebugToolsScreen: View {
             statusText: "M6.16 RefTargetExtractor: OK\n\n" + summary,
             alertMessage: "Printed target metrics to console."
         )
+    }
+
+    private func runRefTargetExtractorLiveDebug() async -> (ok: Bool, statusText: String, alertMessage: String) {
+        await Task.detached(priority: .utility) {
+            await Self.runRefTargetExtractorLiveDebugAsync()
+        }.value
     }
 
     private func loadRefTargetDebugImage() -> CGImage? {
@@ -1884,16 +1963,48 @@ struct DebugToolsScreen: View {
         return nil
     }
 
-    private func formatMetricOutputs(_ metrics: [MetricKey: MetricOutput]) -> String {
+    private static func runRefTargetExtractorLiveDebugAsync() async -> (ok: Bool, statusText: String, alertMessage: String) {
+        guard let frame = TierScheduler.debugLatestFrame() else {
+            return (
+                ok: false,
+                statusText: "M6.16 RefTargetExtractor (live): FAILED\nmissing live frame",
+                alertMessage: "No live frame available. Open Camera and keep preview running."
+            )
+        }
+
+        guard let output = await RefTargetExtractor.extract(
+            pixelBuffer: frame.pixelBuffer,
+            orientation: frame.orientation
+        ) else {
+            return (
+                ok: false,
+                statusText: "M6.16 RefTargetExtractor (live): FAILED\nextract returned nil",
+                alertMessage: "Extractor returned nil. Check console for Vision errors."
+            )
+        }
+
+        let summary = Self.formatMetricOutputs(output.metrics)
+        print("M6.16 RefTargetExtractor (live): metrics_count=\(output.metrics.count)")
+        print(summary)
+
+        return (
+            ok: true,
+            statusText: "M6.16 RefTargetExtractor (live): OK\n\n" + summary,
+            alertMessage: "Printed target metrics to console."
+        )
+    }
+
+    private static func formatMetricOutputs(_ metrics: [MetricKey: MetricOutput]) -> String {
         let keys = MetricKey.allCases
         let lines: [String] = keys.compactMap { key in
             guard let output = metrics[key] else { return nil }
+            let name = "target.\(key.rawValue)"
             if let value = output.value {
                 let formatted = String(format: "%.5f", value)
-                return "\(key.rawValue)=\(formatted)"
+                return "\(name)=\(formatted)"
             }
             let reason = output.reason?.rawValue ?? "unknown"
-            return "\(key.rawValue)=unavailable(\(reason))"
+            return "\(name)=unavailable(\(reason))"
         }
         return lines.joined(separator: "\n")
     }

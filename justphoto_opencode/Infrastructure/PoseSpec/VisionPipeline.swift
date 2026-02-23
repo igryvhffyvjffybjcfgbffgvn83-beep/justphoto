@@ -385,6 +385,8 @@ final class TierScheduler: ObservableObject {
     @Published private(set) var lastFace: VisionFaceResult? = nil
     @Published private(set) var lastROIs: ROISet? = nil
 
+    private static weak var latestInstance: TierScheduler?
+
     private struct FramePacket {
         let pixelBuffer: CVPixelBuffer
         let orientation: CGImagePropertyOrientation
@@ -472,6 +474,7 @@ final class TierScheduler: ObservableObject {
     #endif
 
     init() {
+        TierScheduler.latestInstance = self
         let thermalState = ProcessInfo.processInfo.thermalState
         let degraded = thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
         currentThermalState = thermalState
@@ -499,6 +502,15 @@ final class TierScheduler: ObservableObject {
         stopStatsTimer()
         #endif
         stopThermalMonitoring()
+        if let latest = TierScheduler.latestInstance, latest === self {
+            TierScheduler.latestInstance = nil
+        }
+    }
+
+    static func debugLatestFrame() -> (pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation)? {
+        guard let instance = latestInstance else { return nil }
+        guard let packet = instance.latestFrameSnapshot() else { return nil }
+        return (packet.pixelBuffer, packet.orientation)
     }
 
     private func startTimers() {
