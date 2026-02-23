@@ -464,8 +464,23 @@ M6.15 Create PraiseController file (PoseSpec.praisePolicy)
 ### withRef (target extraction + mirror + match-blocked-by logs)
 
 M6.16 Create RefTargetExtractor file (compute target outputs from ref image)
-- Do: Run same metrics chain on the selected reference image; store outputs only (no pixels).
-- Verify: Select same ref twice; Debug prints target outputs twice with diff <=1e-3.
+- Phase 1 [内核层/纯逻辑] (必须)
+  - Task-Logic: 新增 RefTargetExtractor，输入静态参考图（CGImage/PixelBuffer + orientation），输出 target.* 所需的 Metric 输出（不保存像素）。
+  - Task-Logic: 复用与实时一致的链路：Vision -> ROIComputer -> MetricComputer；输出键集合必须与 MetricContract 对齐。
+  - Verification Instruction:
+    - Debug/Unit: 对同一张 ref 连续提取两次，目标输出 diff <= 1e-3。
+
+- Phase 2 [胶水/调试] (可并行)
+  - Task-Glue: 提供 DebugTools 入口或 debug helper，允许传入一张本地图片触发 RefTargetExtractor 并打印 target outputs。
+  - Verification Instruction:
+    - Debug: 触发一次提取后，控制台输出 target.* 键集合与数值；无像素持久化痕迹。
+
+- Phase 3 [测试] (可并行)
+  - Task-Test: 为 RefTargetExtractor 增加可重复的测试（静态样本或 stub Vision 输出），覆盖：
+    - 稳定性：同图两次结果 diff <= 1e-3。
+    - 不可用：缺 landmarks/ROI 时返回 unavailable reason（不崩溃）。
+  - Verification Instruction:
+    - XCTest: 运行相关单测；稳定性与不可用路径均通过。
 
 M6.17 Store RefTarget in session-scoped storage (and clear on reset)
 - Do: Store target outputs tied to current session; clearing session clears all targets.

@@ -34,8 +34,13 @@ struct MetricOutput: Sendable {
 }
 
 final class MetricComputer {
-    static let shared = MetricComputer()
+    static let shared = MetricComputer(debugLogEnabled: true)
 
+    static func makeIsolated() -> MetricComputer {
+        MetricComputer(debugLogEnabled: false)
+    }
+
+    private let debugLogEnabled: Bool
     private let poseNormalizer = PoseLandmarkNormalizer()
     private let frameMetricComputer = FrameMetricComputer()
     private var cachedMinLandmarkConfidence: Float? = nil
@@ -52,8 +57,11 @@ final class MetricComputer {
     private var lastJitterLog: String? = nil
 #endif
 
-    private init() {
-        print("MetricContract loaded: T0_Count=\(MetricContractBook.t0Count) T1_Count=\(MetricContractBook.t1Count)")
+    private init(debugLogEnabled: Bool) {
+        self.debugLogEnabled = debugLogEnabled
+        if debugLogEnabled {
+            print("MetricContract loaded: T0_Count=\(MetricContractBook.t0Count) T1_Count=\(MetricContractBook.t1Count)")
+        }
     }
 
     func computeMetrics(context: MetricContext) -> [MetricKey: MetricOutput] {

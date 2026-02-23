@@ -5,6 +5,7 @@ import SwiftUI
 import GRDB
 import AVFoundation
 import Photos
+import UIKit
 
 struct DebugToolsScreen: View {
     @EnvironmentObject private var promptCenter: PromptCenter
@@ -12,6 +13,7 @@ struct DebugToolsScreen: View {
     @State private var statusText: String = ""
     @State private var statusIsError: Bool = false
     @State private var isRunning: Bool = false
+    @State private var isRefTargetRunning: Bool = false
 
     @State private var showAlert: Bool = false
     @State private var alertTitle: String = ""
@@ -1507,6 +1509,35 @@ struct DebugToolsScreen: View {
                     alertMessage = "normalizedSpace=canonical_yDown"
                     showAlert = true
                 }
+
+                Button {
+                    guard !isRefTargetRunning else { return }
+                    isRefTargetRunning = true
+                    statusText = "M6.16 RefTargetExtractor: running..."
+                    statusIsError = false
+                    print("M6.16 RefTargetExtractor: start")
+
+                    Task {
+                        let result = await runRefTargetExtractorDebug()
+                        await MainActor.run {
+                            isRefTargetRunning = false
+                            statusText = result.statusText
+                            statusIsError = !result.ok
+                            alertTitle = result.ok ? "M6.16 RefTargetExtractor" : "M6.16 RefTargetExtractor failed"
+                            alertMessage = result.alertMessage
+                            showAlert = true
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Text("M6.16 RunRefTargetExtractor")
+                        Spacer()
+                        if isRefTargetRunning {
+                            ProgressView()
+                        }
+                    }
+                }
+                .disabled(isRefTargetRunning)
             }
 
             Section("Diagnostics") {
@@ -1782,6 +1813,60 @@ struct DebugToolsScreen: View {
                 alertMessage: "Encode/parse failed: \(error.localizedDescription)"
             )
         }
+    }
+
+    private func runRefTargetExtractorDebug() async -> (ok: Bool, statusText: String, alertMessage: String) {
+        guard let cgImage = loadRefTargetDebugImage() else {
+            return (
+                ok: false,
+                statusText: "M6.16 RefTargetExtractor: FAILED\nmissing debug image",
+                alertMessage: "RefTargetDebug.png not found in bundle."
+            )
+        }
+
+        let input = RefTargetInput(cgImage: cgImage, orientation: .up)
+        guard let output = await RefTargetExtractor.extract(input: input) else {
+            return (
+                ok: false,
+                statusText: "M6.16 RefTargetExtractor: FAILED\nextract returned nil",
+                alertMessage: "Extractor returned nil. Check console for Vision errors."
+            )
+        }
+
+        let summary = formatMetricOutputs(output.metrics)
+        print("M6.16 RefTargetExtractor: metrics_count=\(output.metrics.count)")
+        print(summary)
+
+        return (
+            ok: true,
+            statusText: "M6.16 RefTargetExtractor: OK\n\n" + summary,
+            alertMessage: "Printed target metrics to console."
+        )
+    }
+
+    private func loadRefTargetDebugImage() -> CGImage? {
+        if let url = Bundle.main.url(forResource: "RefTargetDebug", withExtension: "png"),
+           let image = UIImage(contentsOfFile: url.path)?.cgImage {
+            return image
+        }
+        if let image = UIImage(named: "RefTargetDebug")?.cgImage {
+            return image
+        }
+        return nil
+    }
+
+    private func formatMetricOutputs(_ metrics: [MetricKey: MetricOutput]) -> String {
+        let keys = MetricKey.allCases
+        let lines: [String] = keys.compactMap { key in
+            guard let output = metrics[key] else { return nil }
+            if let value = output.value {
+                let formatted = String(format: "%.5f", value)
+                return "\(key.rawValue)=\(formatted)"
+            }
+            let reason = output.reason?.rawValue ?? "unknown"
+            return "\(key.rawValue)=unavailable(\(reason))"
+        }
+        return lines.joined(separator: "\n")
     }
 
     private func m429_injectAndHealPhantomAsset() async -> (ok: Bool, statusText: String, alertMessage: String) {
