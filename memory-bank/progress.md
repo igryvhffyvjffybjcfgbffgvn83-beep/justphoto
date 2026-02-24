@@ -84,6 +84,7 @@ Rule: Each checkpoint is either `[ ]` (not done) or `[x]` (done). Update immedia
 Notes / Known limitations (track for later milestones):
 - Pending file now writes real photo bytes with matching file extension.
 - `write_failed(reason)` is not wired yet: PhotoKit errors are not mapped to `WriteFailReason` payload/message.
+- Filmstrip thumbnails now generate from pending files (256px JPEG) with optimistic placeholder fallback.
 
 ### 4C. Asset Fetch Verification Retry (v1.1.4)
 
