@@ -1640,6 +1640,16 @@ private struct CameraControlsOverlay: View {
             .buttonStyle(.borderedProminent)
             .disabled(!shutterGateResult.isEnabled || !poseSpecValid)
 
+#if DEBUG
+            if !shutterGateResult.isEnabled || !poseSpecValid {
+                let poseSpecSuffix = poseSpecValid ? "" : " poseSpecValid=false"
+                Text("ShutterDisabled: \(shutterGateResult.debugDescription)\(poseSpecSuffix)")
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.8))
+                    .multilineTextAlignment(.center)
+            }
+#endif
+
             if cameraPermissionDeclined {
                 Text("Camera permission not requested (declined).")
                     .font(.footnote)
