@@ -165,7 +165,7 @@ Notes / Known limitations (track for later milestones):
 - [x] M6.15 Create PraiseController file (PoseSpec.praisePolicy)
 - [x] M6.16 Create RefTargetExtractor file (compute target outputs from ref image) [Task-Logic/Task-Glue/Task-Test]
 - [x] M6.17 Store RefTarget in session-scoped storage (and clear on reset)
-- [ ] M6.18 Create MirrorEvaluator (x=0.5)
+- [x] M6.18 Create MirrorEvaluator (x=0.5)
 - [ ] M6.19 Create MatchDecider = “PoseSpec exit equivalence” (PRD 5.1.1.a)
 - [ ] M6.20 Emit `withref_match_state` (A.13)
 - [ ] M6.21 Emit `withref_fallback` (A.13)

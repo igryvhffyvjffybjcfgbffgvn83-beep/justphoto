@@ -1205,7 +1205,16 @@ struct DebugToolsScreen: View {
                     showAlert = true
                 }
 
-                if statusText.hasPrefix("M6.16") || statusText.hasPrefix("M6.17") {
+                Button("M6.18 MirrorEvaluatorProbe") {
+                    let result = runMirrorEvaluatorProbe()
+                    statusText = result.statusText
+                    statusIsError = !result.ok
+                    alertTitle = result.ok ? "M6.18" : "M6.18 failed"
+                    alertMessage = result.alertMessage
+                    showAlert = true
+                }
+
+                if statusText.hasPrefix("M6.16") || statusText.hasPrefix("M6.17") || statusText.hasPrefix("M6.18") {
                     Text(statusText)
                         .font(.footnote)
                         .foregroundStyle(statusIsError ? .red : .secondary)
@@ -2000,6 +2009,40 @@ struct DebugToolsScreen: View {
             return "\(name)=unavailable(\(reason))"
         }
         return lines.joined(separator: "\n")
+    }
+
+    private func runMirrorEvaluatorProbe() -> (ok: Bool, statusText: String, alertMessage: String) {
+        let metrics: [MetricKey: MetricOutput] = [
+            .centerXOffset: .available(0.20),
+            .colorTempLeftK: .available(5000),
+            .colorTempRightK: .available(6000),
+            .registrationOffsetX: .available(0.12),
+        ]
+
+        let targetCenterX: Double = -0.20
+        let normalError = metrics[.centerXOffset]?.value.map { $0 - targetCenterX }
+        let mirroredMetrics = MirrorEvaluator.mirrorMetricOutputs(metrics)
+        let mirroredError = mirroredMetrics[.centerXOffset]?.value.map { $0 - targetCenterX }
+
+        guard let chosen = MirrorEvaluator.chooseSmallerError(normal: normalError, mirrored: mirroredError) else {
+            return (
+                ok: false,
+                statusText: "M6.18 MirrorEvaluatorProbe: FAILED\nmissing errors",
+                alertMessage: "No error values computed"
+            )
+        }
+
+        let line = "M6.18 MirrorEval: normal=\(normalError.map { String(describing: $0) } ?? "<nil>") " +
+            "mirrored=\(mirroredError.map { String(describing: $0) } ?? "<nil>") " +
+            "chosen=\(chosen.errorValue.map { String(describing: $0) } ?? "<nil>") " +
+            "mirrorApplied=\(chosen.mirrorApplied)"
+        print(line)
+
+        return (
+            ok: true,
+            statusText: "M6.18 MirrorEvaluatorProbe: OK\n\n" + line,
+            alertMessage: "mirrorApplied=\(chosen.mirrorApplied)"
+        )
     }
 
     private func m429_injectAndHealPhantomAsset() async -> (ok: Bool, statusText: String, alertMessage: String) {
