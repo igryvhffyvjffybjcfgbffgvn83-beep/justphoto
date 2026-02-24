@@ -1189,7 +1189,23 @@ struct DebugToolsScreen: View {
                 }
                 .disabled(isRefTargetLiveRunning)
 
-                if statusText.hasPrefix("M6.16") {
+                Button("M6.17 PrintRefTargetStatus") {
+                    let sessionId = (try? SessionRepository.shared.currentSessionId()) ?? "<nil>"
+                    let snapshot = RefTargetSessionStore.shared.currentSnapshot()
+                    let present = (snapshot?.targets.isEmpty == false)
+                    let count = snapshot?.targets.count ?? 0
+                    let updatedAt = snapshot?.updatedAt.description ?? "<nil>"
+                    let line = "M6.17 RefTargetStatus: session_id=\(sessionId) target_present=\(present) metrics=\(count)"
+                    print(line)
+
+                    statusText = "M6.17 RefTargetStatus\n\nsession_id=\(sessionId)\ntargetPresent=\(present)\nmetrics=\(count)\nupdated_at=\(updatedAt)"
+                    statusIsError = false
+                    alertTitle = "M6.17"
+                    alertMessage = "targetPresent=\(present) metrics=\(count)"
+                    showAlert = true
+                }
+
+                if statusText.hasPrefix("M6.16") || statusText.hasPrefix("M6.17") {
                     Text(statusText)
                         .font(.footnote)
                         .foregroundStyle(statusIsError ? .red : .secondary)
@@ -1918,49 +1934,19 @@ struct DebugToolsScreen: View {
     }
 
     private func runRefTargetExtractorDebug() async -> (ok: Bool, statusText: String, alertMessage: String) {
-        guard let cgImage = loadRefTargetDebugImage() else {
-            return (
-                ok: false,
-                statusText: "M6.16 RefTargetExtractor: FAILED\nmissing debug image",
-                alertMessage: "RefTargetDebug.png not found in bundle."
-            )
-        }
+        await Task.detached(priority: .utility) {
+            await Self.runRefTargetExtractorDebugAsync()
+        }.value
+    }
 
-        let input = RefTargetInput(cgImage: cgImage, orientation: .up)
-        guard let output = await RefTargetExtractor.extract(input: input) else {
-            return (
-                ok: false,
-                statusText: "M6.16 RefTargetExtractor: FAILED\nextract returned nil",
-                alertMessage: "Extractor returned nil. Check console for Vision errors."
-            )
-        }
-
-        let summary = Self.formatMetricOutputs(output.metrics)
-        print("M6.16 RefTargetExtractor: metrics_count=\(output.metrics.count)")
-        print(summary)
-
-        return (
-            ok: true,
-            statusText: "M6.16 RefTargetExtractor: OK\n\n" + summary,
-            alertMessage: "Printed target metrics to console."
-        )
+    private static func runRefTargetExtractorDebugAsync() async -> (ok: Bool, statusText: String, alertMessage: String) {
+        await runRefTargetExtractorLiveDebugAsync()
     }
 
     private func runRefTargetExtractorLiveDebug() async -> (ok: Bool, statusText: String, alertMessage: String) {
         await Task.detached(priority: .utility) {
             await Self.runRefTargetExtractorLiveDebugAsync()
         }.value
-    }
-
-    private func loadRefTargetDebugImage() -> CGImage? {
-        if let url = Bundle.main.url(forResource: "RefTargetDebug", withExtension: "png"),
-           let image = UIImage(contentsOfFile: url.path)?.cgImage {
-            return image
-        }
-        if let image = UIImage(named: "RefTargetDebug")?.cgImage {
-            return image
-        }
-        return nil
     }
 
     private static func runRefTargetExtractorLiveDebugAsync() async -> (ok: Bool, statusText: String, alertMessage: String) {
@@ -1987,9 +1973,16 @@ struct DebugToolsScreen: View {
         print("M6.16 RefTargetExtractor (live): metrics_count=\(output.metrics.count)")
         print(summary)
 
+        _ = RefTargetSessionStore.shared.setTargetsForCurrentSession(metrics: output.metrics)
+        let snapshot = RefTargetSessionStore.shared.currentSnapshot()
+        let targetPresent = (snapshot?.targets.isEmpty == false)
+        let storedCount = snapshot?.targets.count ?? 0
+        let storeLine = "M6.17 RefTargetStore: target_present=\(targetPresent) metrics=\(storedCount)"
+        print(storeLine)
+
         return (
             ok: true,
-            statusText: "M6.16 RefTargetExtractor (live): OK\n\n" + summary,
+            statusText: "M6.16 RefTargetExtractor (live): OK\n\n" + summary + "\n\n" + storeLine,
             alertMessage: "Printed target metrics to console."
         )
     }

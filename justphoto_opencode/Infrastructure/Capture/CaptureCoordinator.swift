@@ -113,8 +113,21 @@ private actor CapturePipeline {
             // Deadline task will convert to capture_failed.
         } else {
             do {
-                let rel = PendingFileStore.shared.makeRelativePath(itemId: summary.itemId, fileExtension: "png")
-                let data = Self.makeTinyPNGData()
+                let capture: CameraFrameSource.PhotoCaptureResult
+                do {
+                    capture = try await CameraFrameSource.capturePhotoDataFromActive()
+                } catch {
+                    JPDebugPrint("PhotoCaptureFAILED: \(error)")
+                    return
+                }
+
+                let data = capture.data
+                if data.count < Self.minPhotoDataBytes {
+                    JPDebugPrint("PhotoCaptureFAILED: data_too_small bytes=\(data.count)")
+                    return
+                }
+
+                let rel = PendingFileStore.shared.makeRelativePath(itemId: summary.itemId, fileExtension: capture.fileExtension)
                 let url = try PendingFileStore.shared.writeAtomic(data: data, toRelativePath: rel)
                 JPDebugPrint("PendingFileWritten: item_id=\(summary.itemId) rel_path=\(rel) bytes=\(data.count) url=\(url.path)")
 
@@ -189,6 +202,15 @@ private actor CapturePipeline {
                 deadlineTask.cancel()
             } catch {
                 JPDebugPrint("PendingFileWriteFAILED: \(error)")
+                await MainActor.run {
+                    do {
+                        try SessionRepository.shared.markWriteFailed(itemId: summary.itemId)
+                        NotificationCenter.default.post(name: CaptureEvents.writeFailed, object: nil)
+                    } catch {
+                        JPDebugPrint("WriteFailedMarkFAILED: \(error)")
+                    }
+                }
+                deadlineTask.cancel()
             }
         }
 
@@ -283,9 +305,8 @@ private actor CapturePipeline {
             return
         }
 
-        let defaultRel = PendingFileStore.shared.makeRelativePath(itemId: itemId, fileExtension: "png")
-        if PendingFileStore.shared.fileExists(relativePath: defaultRel) {
-            JPDebugPrint("CaptureDeadlineSatisfied: item_id=\(itemId) (file_exists_no_db_rel_path)")
+        if let rel = Self.existingPendingRelPath(itemId: itemId) {
+            JPDebugPrint("CaptureDeadlineSatisfied: item_id=\(itemId) (file_exists_no_db_rel_path) rel=\(rel)")
             return
         }
 
@@ -313,6 +334,22 @@ private actor CapturePipeline {
         // 1x1 PNG.
         let b64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB/6X9nN8AAAAASUVORK5CYII="
         return Data(base64Encoded: b64) ?? Data([0x89, 0x50, 0x4E, 0x47])
+    }
+
+    private static let minPhotoDataBytes: Int = 50_000
+    private static let pendingFileExtensions: [String] = ["heic", "jpg", "jpeg", "png"]
+
+    private static func pendingRelPathCandidates(itemId: String) -> [String] {
+        pendingFileExtensions.map { PendingFileStore.shared.makeRelativePath(itemId: itemId, fileExtension: $0) }
+    }
+
+    private static func existingPendingRelPath(itemId: String) -> String? {
+        for rel in pendingRelPathCandidates(itemId: itemId) {
+            if PendingFileStore.shared.fileExists(relativePath: rel) {
+                return rel
+            }
+        }
+        return nil
     }
 
     private func blockedReasonIfAny() async -> String? {
@@ -386,19 +423,16 @@ private actor CapturePipeline {
 
         var rel = summary.pendingFileRelPath
 
-        if rel == nil {
-            let defaultRel = PendingFileStore.shared.makeRelativePath(itemId: itemId, fileExtension: "png")
-            if PendingFileStore.shared.fileExists(relativePath: defaultRel) {
-                await MainActor.run {
-                    do {
-                        try SessionRepository.shared.updatePendingFileRelPath(itemId: itemId, relPath: defaultRel)
-                    } catch {
-                        JPDebugPrint("RetrySaveBackfillPendingRelFAILED: \(error)")
-                    }
+        if rel == nil, let existingRel = Self.existingPendingRelPath(itemId: itemId) {
+            await MainActor.run {
+                do {
+                    try SessionRepository.shared.updatePendingFileRelPath(itemId: itemId, relPath: existingRel)
+                } catch {
+                    JPDebugPrint("RetrySaveBackfillPendingRelFAILED: \(error)")
                 }
-                rel = defaultRel
-                JPDebugPrint("RetrySaveBackfillPendingRel: item_id=\(itemId) rel=\(defaultRel)")
             }
+            rel = existingRel
+            JPDebugPrint("RetrySaveBackfillPendingRel: item_id=\(itemId) rel=\(existingRel)")
         }
 
         #if DEBUG

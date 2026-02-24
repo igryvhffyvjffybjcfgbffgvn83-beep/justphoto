@@ -82,7 +82,7 @@ Rule: Each checkpoint is either `[ ]` (not done) or `[x]` (done). Update immedia
 - [x] M4.11 Start PhotoKit write only after pending file exists
 
 Notes / Known limitations (track for later milestones):
-- Pending file currently writes a tiny placeholder PNG (not real camera bytes yet).
+- Pending file now writes real photo bytes with matching file extension.
 - `write_failed(reason)` is not wired yet: PhotoKit errors are not mapped to `WriteFailReason` payload/message.
 
 ### 4C. Asset Fetch Verification Retry (v1.1.4)
@@ -163,7 +163,7 @@ Notes / Known limitations (track for later milestones):
 - [x] M6.14 Phase 2 AntiJitterGate integration + jitter logs
 - [x] M6.15 Create PraiseController file (PoseSpec.praisePolicy)
 - [x] M6.16 Create RefTargetExtractor file (compute target outputs from ref image) [Task-Logic/Task-Glue/Task-Test]
-- [ ] M6.17 Store RefTarget in session-scoped storage (and clear on reset)
+- [x] M6.17 Store RefTarget in session-scoped storage (and clear on reset)
 - [ ] M6.18 Create MirrorEvaluator (x=0.5)
 - [ ] M6.19 Create MatchDecider = “PoseSpec exit equivalence” (PRD 5.1.1.a)
 - [ ] M6.20 Emit `withref_match_state` (A.13)

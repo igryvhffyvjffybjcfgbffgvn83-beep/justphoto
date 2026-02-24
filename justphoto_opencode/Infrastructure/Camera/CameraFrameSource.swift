@@ -14,6 +14,18 @@ final class CameraFrameSource: NSObject, ObservableObject {
         case failed
     }
 
+    struct PhotoCaptureResult: Sendable {
+        let data: Data
+        let fileExtension: String
+    }
+
+    enum PhotoCaptureError: Error {
+        case cameraNotRunning
+        case missingOutput
+        case fileDataMissing
+        case captureFailed(String)
+    }
+
     @Published private(set) var state: State = .idle
     @Published private(set) var lastError: String? = nil
 
@@ -30,12 +42,23 @@ final class CameraFrameSource: NSObject, ObservableObject {
     private let outputQueue = DispatchQueue(label: "justphoto.camera.frame_output")
     private let videoOutput = AVCaptureVideoDataOutput()
 
+    private let photoOutputQueue = DispatchQueue(label: "justphoto.camera.photo_output")
+    private let photoOutput = AVCapturePhotoOutput()
+
     nonisolated(unsafe) private var lastDeliveredTsMs: Int = 0
+
+#if canImport(UIKit)
+    private static let latestInstanceLock = NSLock()
+    private static weak var latestInstance: CameraFrameSource?
+#endif
 
 #if canImport(UIKit)
     private var orientationObserver: NSObjectProtocol? = nil
     private let interfaceOrientationLock = NSLock()
     nonisolated(unsafe) private var cachedInterfaceOrientation: UIInterfaceOrientation? = nil
+
+    private let photoDelegatesLock = NSLock()
+    private var inFlightPhotoDelegates: [UUID: PhotoCaptureDelegate] = [:]
 #endif
 
     func start() {
@@ -63,6 +86,9 @@ final class CameraFrameSource: NSObject, ObservableObject {
                 self.state = .running
                 self.lastError = nil
             }
+#if canImport(UIKit)
+            Self.setLatestInstance(self)
+#endif
             #if DEBUG
             print("CameraFrameSourceStarted")
             #endif
@@ -85,6 +111,9 @@ final class CameraFrameSource: NSObject, ObservableObject {
         session.stopRunning()
         DispatchQueue.main.async { self.state = .idle }
 
+#if canImport(UIKit)
+        Self.clearLatestInstance(self)
+#endif
 #if canImport(UIKit)
         if let obs = orientationObserver {
             NotificationCenter.default.removeObserver(obs)
@@ -128,6 +157,16 @@ final class CameraFrameSource: NSObject, ObservableObject {
         session.addOutput(videoOutput)
 
         if let c = videoOutput.connection(with: .video) {
+            c.videoOrientation = .portrait
+        }
+
+        guard session.canAddOutput(photoOutput) else {
+            throw NSError(domain: "CameraFrameSource", code: 4, userInfo: [NSLocalizedDescriptionKey: "Cannot add photo output"])
+        }
+        session.addOutput(photoOutput)
+        photoOutput.isHighResolutionCaptureEnabled = true
+        photoOutput.maxPhotoQualityPrioritization = .quality
+        if let c = photoOutput.connection(with: .video) {
             c.videoOrientation = .portrait
         }
     }
@@ -177,6 +216,115 @@ extension CameraFrameSource: AVCaptureVideoDataOutputSampleBufferDelegate {
 }
 
 #if canImport(UIKit)
+extension CameraFrameSource {
+    static func capturePhotoDataFromActive() async throws -> PhotoCaptureResult {
+        guard let instance = getLatestInstance() else {
+            throw PhotoCaptureError.cameraNotRunning
+        }
+        return try await instance.capturePhotoData()
+    }
+
+    private static func getLatestInstance() -> CameraFrameSource? {
+        latestInstanceLock.lock()
+        defer { latestInstanceLock.unlock() }
+        return latestInstance
+    }
+
+    private static func setLatestInstance(_ instance: CameraFrameSource) {
+        latestInstanceLock.lock()
+        latestInstance = instance
+        latestInstanceLock.unlock()
+    }
+
+    private static func clearLatestInstance(_ instance: CameraFrameSource) {
+        latestInstanceLock.lock()
+        if latestInstance === instance {
+            latestInstance = nil
+        }
+        latestInstanceLock.unlock()
+    }
+
+    private final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
+        let id: UUID
+        let completion: (Result<Data, Error>) -> Void
+
+        init(id: UUID, completion: @escaping (Result<Data, Error>) -> Void) {
+            self.id = id
+            self.completion = completion
+        }
+
+        func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+            if let error {
+                completion(.failure(error))
+                return
+            }
+            guard let data = photo.fileDataRepresentation() else {
+                completion(.failure(PhotoCaptureError.fileDataMissing))
+                return
+            }
+            completion(.success(data))
+        }
+    }
+
+    private func capturePhotoData() async throws -> PhotoCaptureResult {
+        guard state == .running else {
+            throw PhotoCaptureError.cameraNotRunning
+        }
+
+        let codec: AVVideoCodecType
+        if photoOutput.availablePhotoCodecTypes.contains(.hevc) {
+            codec = .hevc
+        } else if photoOutput.availablePhotoCodecTypes.contains(.jpeg) {
+            codec = .jpeg
+        } else {
+            throw PhotoCaptureError.missingOutput
+        }
+
+        let settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: codec])
+        settings.photoQualityPrioritization = .quality
+        if photoOutput.isHighResolutionCaptureEnabled {
+            settings.isHighResolutionPhotoEnabled = true
+        }
+
+        let data: Data = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
+            let id = UUID()
+            let delegate = PhotoCaptureDelegate(id: id) { [weak self] result in
+                guard let self else {
+                    continuation.resume(throwing: PhotoCaptureError.captureFailed("CameraFrameSource deallocated"))
+                    return
+                }
+                self.removeInFlightDelegate(id: id)
+                switch result {
+                case .success(let data):
+                    continuation.resume(returning: data)
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
+            }
+            addInFlightDelegate(delegate)
+            photoOutputQueue.async { [weak self] in
+                guard let self else { return }
+                self.photoOutput.capturePhoto(with: settings, delegate: delegate)
+            }
+        }
+
+        let fileExtension = (codec == .hevc) ? "heic" : "jpg"
+        return PhotoCaptureResult(data: data, fileExtension: fileExtension)
+    }
+
+    private func addInFlightDelegate(_ delegate: PhotoCaptureDelegate) {
+        photoDelegatesLock.lock()
+        inFlightPhotoDelegates[delegate.id] = delegate
+        photoDelegatesLock.unlock()
+    }
+
+    private func removeInFlightDelegate(id: UUID) {
+        photoDelegatesLock.lock()
+        inFlightPhotoDelegates.removeValue(forKey: id)
+        photoDelegatesLock.unlock()
+    }
+}
+
 extension CameraFrameSource {
     private func getCachedInterfaceOrientation() -> UIInterfaceOrientation? {
         interfaceOrientationLock.lock()

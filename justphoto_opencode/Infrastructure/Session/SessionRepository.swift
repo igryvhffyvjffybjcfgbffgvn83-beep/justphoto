@@ -177,6 +177,9 @@ final class SessionRepository {
             try db.execute(sql: "DELETE FROM app_meta WHERE key = ?", arguments: ["current_session_id"])
         }
 
+        // Session reset must clear any in-memory withRef targets.
+        RefTargetSessionStore.shared.clear(sessionId: id)
+
         // Best-effort file cleanup.
         if deleteData {
             for r in refs {
