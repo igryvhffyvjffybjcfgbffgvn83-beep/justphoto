@@ -34,6 +34,18 @@ struct MetricOutput: Sendable {
 }
 
 final class MetricComputer {
+    private enum MetricMissingDetailReason: String {
+        case lowConf = "low_conf"
+        case outOfRange = "out_of_range"
+        case missingInput = "missing_input"
+        case bboxInvalid = "bbox_invalid"
+    }
+
+    private struct BodyMetricComputeResult {
+        let outputs: [MetricKey: MetricOutput]
+        let unavailableDetails: [MetricKey: String]
+    }
+
     static let shared = MetricComputer(debugLogEnabled: true)
 
     static func makeIsolated() -> MetricComputer {
@@ -41,7 +53,6 @@ final class MetricComputer {
     }
 
     private let debugLogEnabled: Bool
-    private let poseNormalizer = PoseLandmarkNormalizer()
     private let frameMetricComputer = FrameMetricComputer()
     private var cachedMinLandmarkConfidence: Float? = nil
 #if DEBUG
@@ -70,76 +81,70 @@ final class MetricComputer {
         #endif
 
         var outputs: [MetricKey: MetricOutput] = [:]
-        outputs.merge(computeBodyMetrics(context: context), uniquingKeysWith: { _, rhs in rhs })
+        let bodyResult = computeBodyMetrics(context: context)
+        outputs.merge(bodyResult.outputs, uniquingKeysWith: { _, rhs in rhs })
         outputs.merge(computeFaceMetrics(context: context), uniquingKeysWith: { _, rhs in rhs })
         outputs.merge(computeFrameMetrics(context: context), uniquingKeysWith: { _, rhs in rhs })
 
         #if DEBUG
-        printMetricOutputs(outputs)
+        printMetricOutputs(outputs, unavailableDetails: bodyResult.unavailableDetails)
         debugRunAntiJitterProbe(outputs: outputs)
         #endif
 
         return outputs
     }
 
-    private func computeBodyMetrics(context: MetricContext) -> [MetricKey: MetricOutput] {
-        let keys: [MetricKey] = [
+    private func computeBodyMetrics(context: MetricContext) -> BodyMetricComputeResult {
+        let bboxKeys: [MetricKey] = [
             .centerXOffset,
             .centerYOffset,
             .bboxHeight,
             .headroom,
             .bottomMargin,
+        ]
+        let jointKeys: [MetricKey] = [
             .shoulderAngleDeg,
             .hipAngleDeg,
             .torsoLeanAngleDeg,
         ]
+        let allKeys = bboxKeys + jointKeys
 
-        func allUnavailable(_ reason: UnavailableReason) -> [MetricKey: MetricOutput] {
-            var out: [MetricKey: MetricOutput] = [:]
-            for key in keys {
-                out[key] = .unavailable(reason)
+        var out: [MetricKey: MetricOutput] = [:]
+        var unavailableDetails: [MetricKey: String] = [:]
+
+        func markUnavailable(_ key: MetricKey, detail: String) {
+            out[key] = .unavailable(.missingLandmark)
+            unavailableDetails[key] = detail
+        }
+
+        func markAllUnavailable(detail: String) {
+            for key in allKeys {
+                markUnavailable(key, detail: detail)
             }
-            return out
         }
 
         guard let specMinConf = loadMinLandmarkConfidence() else {
-            return allUnavailable(.missingLandmark)
+            markAllUnavailable(detail: "\(MetricMissingDetailReason.missingInput.rawValue):confidence_rule_unavailable")
+            return BodyMetricComputeResult(outputs: out, unavailableDetails: unavailableDetails)
         }
-        guard let obs = context.pose?.rawObservation?.observation else {
-            return allUnavailable(.missingLandmark)
+        guard let pose = context.pose else {
+            markAllUnavailable(detail: "\(MetricMissingDetailReason.missingInput.rawValue):no_pose")
+            return BodyMetricComputeResult(outputs: out, unavailableDetails: unavailableDetails)
         }
-
-        // Diagnostic override: relax min landmark confidence to improve availability.
-        let minConf: Float = max(0.0, min(0.1, specMinConf))
+        let points = canonicalBodyPoints(from: pose)
 
         #if DEBUG
-        debugLogBodyDiagnostics(context: context, observation: obs, minConf: minConf)
+        debugLogBodyDiagnostics(context: context, pose: pose, minConf: max(0.0, min(1.0, specMinConf)))
+        debugLogBodyBounds(points: points)
         #endif
 
-        let rawPoints = poseNormalizer.normalize(observation: obs, minConfidence: minConf)
-        guard !rawPoints.isEmpty else {
-            return allUnavailable(.missingLandmark)
+        guard !points.isEmpty else {
+            let fallbackReason = dominantDropReason(in: pose)?.rawValue ?? PosePointDropReason.missingInput.rawValue
+            markAllUnavailable(detail: fallbackReason)
+            return BodyMetricComputeResult(outputs: out, unavailableDetails: unavailableDetails)
         }
 
-        let points = OrientationFix.apply(rawPoints)
-        #if DEBUG
-        debugLogBodyBounds(rawPoints: rawPoints, fixedPoints: points)
-        #endif
-        let bbox = BodyBBoxBuilder.build(from: Array(points.values))
-        guard bbox.isValid else {
-            return allUnavailable(.missingLandmark)
-        }
-
-        var out: [MetricKey: MetricOutput] = [:]
-        let center = bbox.center
-        let rect = bbox.rect
-
-        out[.centerXOffset] = .available(Double(center.x) - 0.5)
-        out[.centerYOffset] = .available(Double(center.y) - 0.52)
-        out[.bboxHeight] = .available(Double(rect.height))
-        out[.headroom] = .available(Double(rect.minY))
-        out[.bottomMargin] = .available(1.0 - Double(rect.maxY))
-
+        // Joint metrics: never depend on bbox validity.
         let lShoulder = bodyPoint(.leftShoulder, in: points)
         let rShoulder = bodyPoint(.rightShoulder, in: points)
         if let lShoulder, let rShoulder {
@@ -147,7 +152,10 @@ final class MetricComputer {
                 PoseGeometry.angleDeg(from: lShoulder.pPortrait, to: rShoulder.pPortrait)
             )
         } else {
-            out[.shoulderAngleDeg] = .unavailable(.missingLandmark)
+            markUnavailable(
+                .shoulderAngleDeg,
+                detail: "\(MetricMissingDetailReason.missingInput.rawValue):lShoulder=\(missingJointReason(.leftShoulder, pose: pose))|rShoulder=\(missingJointReason(.rightShoulder, pose: pose))"
+            )
         }
 
         let lHip = bodyPoint(.leftHip, in: points)
@@ -157,7 +165,10 @@ final class MetricComputer {
                 PoseGeometry.angleDeg(from: lHip.pPortrait, to: rHip.pPortrait)
             )
         } else {
-            out[.hipAngleDeg] = .unavailable(.missingLandmark)
+            markUnavailable(
+                .hipAngleDeg,
+                detail: "\(MetricMissingDetailReason.missingInput.rawValue):lHip=\(missingJointReason(.leftHip, pose: pose))|rHip=\(missingJointReason(.rightHip, pose: pose))"
+            )
         }
 
         if let lShoulder, let rShoulder, let lHip, let rHip {
@@ -167,10 +178,30 @@ final class MetricComputer {
                 PoseGeometry.torsoLeanAngleDeg(hipMid: hipMid, shoulderMid: shoulderMid)
             )
         } else {
-            out[.torsoLeanAngleDeg] = .unavailable(.missingLandmark)
+            markUnavailable(
+                .torsoLeanAngleDeg,
+                detail: "\(MetricMissingDetailReason.missingInput.rawValue):shoulders_or_hips_unavailable"
+            )
         }
 
-        return out
+        // BBox metrics: only these depend on bbox validity.
+        let bbox = BodyBBoxBuilder.build(from: Array(points.values))
+        if bbox.isValid {
+            let center = bbox.center
+            let rect = bbox.rect
+            out[.centerXOffset] = .available(Double(center.x) - 0.5)
+            out[.centerYOffset] = .available(Double(center.y) - 0.52)
+            out[.bboxHeight] = .available(Double(rect.height))
+            out[.headroom] = .available(Double(rect.minY))
+            out[.bottomMargin] = .available(1.0 - Double(rect.maxY))
+        } else {
+            let bboxReason = bbox.invalidReason?.rawValue ?? "bbox_invalid"
+            for key in bboxKeys {
+                markUnavailable(key, detail: "\(MetricMissingDetailReason.bboxInvalid.rawValue):\(bboxReason)")
+            }
+        }
+
+        return BodyMetricComputeResult(outputs: out, unavailableDetails: unavailableDetails)
     }
 
     private func computeFaceMetrics(context: MetricContext) -> [MetricKey: MetricOutput] {
@@ -191,7 +222,7 @@ final class MetricComputer {
             return allUnavailable(.missingLandmark)
         }
 
-        let bbox = OrientationFix.apply(face.faceBBoxPortrait)
+        let bbox = face.faceBBoxPortrait
         guard bbox.width.isFinite, bbox.height.isFinite, bbox.width > 0, bbox.height > 0 else {
             return allUnavailable(.invalidBBox)
         }
@@ -199,17 +230,14 @@ final class MetricComputer {
         var out: [MetricKey: MetricOutput] = [:]
 
         if let lEye = face.leftEyeCenter?.pPortrait, let rEye = face.rightEyeCenter?.pPortrait {
-            let lFixed = OrientationFix.apply(lEye)
-            let rFixed = OrientationFix.apply(rEye)
-            out[.eyeLineAngleDeg] = .available(PoseGeometry.angleDeg(from: lFixed, to: rFixed))
+            out[.eyeLineAngleDeg] = .available(PoseGeometry.angleDeg(from: lEye, to: rEye))
         } else {
             out[.eyeLineAngleDeg] = .unavailable(.missingLandmark)
         }
 
         if let nose = face.noseCenter?.pPortrait {
-            let noseFixed = OrientationFix.apply(nose)
             let chinCenter = CGPoint(x: bbox.midX, y: bbox.maxY)
-            let dist = PoseGeometry.distance(noseFixed, chinCenter)
+            let dist = PoseGeometry.distance(nose, chinCenter)
             let ratio = dist / Double(bbox.height)
             out[.noseToChinRatio] = ratio.isFinite ? .available(ratio) : .unavailable(.invalidBBox)
         } else {
@@ -272,6 +300,43 @@ final class MetricComputer {
             return nil
         }
         return points[key]
+    }
+
+    private func canonicalBodyPoints(from pose: VisionPoseResult) -> [String: BodyPoint] {
+        var out: [String: BodyPoint] = [:]
+        out.reserveCapacity(pose.points.count)
+        for (key, landmark) in pose.points {
+            guard let conf = landmark.confidence, conf.isFinite else { continue }
+            let p = landmark.pPortrait
+            guard p.x.isFinite, p.y.isFinite,
+                  p.x >= 0.0, p.x <= 1.0,
+                  p.y >= 0.0, p.y <= 1.0 else {
+                continue
+            }
+            out[key] = BodyPoint(pPortrait: p, confidence: conf)
+        }
+        return out
+    }
+
+    private func missingJointReason(
+        _ joint: VNHumanBodyPoseObservation.JointName,
+        pose: VisionPoseResult
+    ) -> String {
+        guard let key = LandmarkBindings.bodyJointToCanonicalKey[joint] else {
+            return MetricMissingDetailReason.missingInput.rawValue
+        }
+        if pose.points[key] != nil {
+            return "available"
+        }
+        return pose.droppedReasonsByJointKey[key]?.rawValue ?? MetricMissingDetailReason.missingInput.rawValue
+    }
+
+    private func dominantDropReason(in pose: VisionPoseResult) -> PosePointDropReason? {
+        var counts: [PosePointDropReason: Int] = [:]
+        for reason in pose.droppedReasonsByJointKey.values {
+            counts[reason, default: 0] += 1
+        }
+        return counts.max { $0.value < $1.value }?.key
     }
 
     private func loadMinLandmarkConfidence() -> Float? {
@@ -388,7 +453,7 @@ final class MetricComputer {
             return
         }
 
-        guard let obs = context.pose?.rawObservation?.observation else {
+        guard let pose = context.pose else {
             let thr = String(format: "%.2f", minConf)
             print("PoseSpecLandmarksDump: (no_pose)")
             print("BodyPointsStats: Total=0 Kept=0 Threshold=\(thr)")
@@ -399,8 +464,12 @@ final class MetricComputer {
             return
         }
 
-        let (rawPoints, stats) = poseNormalizer.normalizeWithStats(observation: obs, minConfidence: minConf)
-        let points = OrientationFix.apply(rawPoints)
+        let points = canonicalBodyPoints(from: pose)
+        let stats = pose.canonicalizationStats ?? PoseCanonicalizationStats(
+            totalCandidates: points.count,
+            kept: points.count,
+            threshold: minConf
+        )
 
         // Dump a PoseSpec-like alias view for quick console verification.
         var parts: [String] = []
@@ -428,6 +497,13 @@ final class MetricComputer {
 
         let thr = String(format: "%.2f", Double(stats.threshold))
         print("BodyPointsStats: Total=\(stats.totalCandidates) Kept=\(stats.kept) Threshold=\(thr) Dropped=\(stats.dropped)")
+        if !pose.droppedReasonsByJointKey.isEmpty {
+            let dropped = pose.droppedReasonsByJointKey
+                .sorted { $0.key < $1.key }
+                .map { "\($0.key):\($0.value.rawValue)" }
+                .joined(separator: ",")
+            print("BodyPointDroppedReasons: \(dropped)")
+        }
 
         let bbox = BodyBBoxBuilder.build(from: Array(points.values))
         if bbox.isValid {
@@ -446,7 +522,10 @@ final class MetricComputer {
         }
     }
 
-    private func printMetricOutputs(_ outputs: [MetricKey: MetricOutput]) {
+    private func printMetricOutputs(
+        _ outputs: [MetricKey: MetricOutput],
+        unavailableDetails: [MetricKey: String]
+    ) {
         var parts: [String] = []
         for key in Self.t0MetricKeys {
             guard let output = outputs[key] else {
@@ -457,7 +536,11 @@ final class MetricComputer {
                 let valueStr = String(format: "%.4f", value)
                 parts.append("\(key.rawValue)=\(valueStr)")
             } else if let reason = output.reason {
-                parts.append("\(key.rawValue)=unavailable(\(reason.rawValue))")
+                if let detail = unavailableDetails[key], !detail.isEmpty {
+                    parts.append("\(key.rawValue)=unavailable(\(reason.rawValue):\(detail))")
+                } else {
+                    parts.append("\(key.rawValue)=unavailable(\(reason.rawValue))")
+                }
             } else {
                 parts.append("\(key.rawValue)=unavailable(unknown)")
             }
@@ -467,37 +550,42 @@ final class MetricComputer {
 
     private func debugLogBodyDiagnostics(
         context: MetricContext,
-        observation: VNHumanBodyPoseObservation,
+        pose: VisionPoseResult,
         minConf: Float
     ) {
-        let allPoints = (try? observation.recognizedPoints(.all)) ?? [:]
-        print("DEBUG_METRIC_ENTRY: Body Joints=\(allPoints.count) minConf=\(String(format: "%.2f", minConf))")
+        let stats = pose.canonicalizationStats
+        let total = stats?.totalCandidates ?? pose.points.count
+        let kept = stats?.kept ?? pose.points.count
+        print("DEBUG_METRIC_ENTRY: Body Joints=\(total) kept=\(kept) minConf=\(String(format: "%.2f", minConf))")
 
-        let lShldr = try? observation.recognizedPoint(.leftShoulder)
-        let rShldr = try? observation.recognizedPoint(.rightShoulder)
+        let lShldr = bodyPoint(.leftShoulder, in: canonicalBodyPoints(from: pose))
+        let rShldr = bodyPoint(.rightShoulder, in: canonicalBodyPoints(from: pose))
         let lConf = lShldr?.confidence ?? -1
         let rConf = rShldr?.confidence ?? -1
         print("DEBUG_CONFIDENCE: L.Shldr=\(String(format: "%.2f", lConf)) R.Shldr=\(String(format: "%.2f", rConf))")
 
-        let orientation = context.orientation ?? .up
-        if let l = lShldr, let r = rShldr {
-            let lNorm = PoseSpecCoordinateNormalizer.normalize(l.location, sourceOrientation: orientation)
-            let rNorm = PoseSpecCoordinateNormalizer.normalize(r.location, sourceOrientation: orientation)
-            let lFixed = OrientationFix.apply(lNorm)
-            let rFixed = OrientationFix.apply(rNorm)
-            print("DEBUG_FIXED_COORDS: L=\(lFixed) R=\(rFixed)")
-            if lFixed.x > 1.0 || lFixed.y > 1.0 || lFixed.x < 0.0 || lFixed.y < 0.0 {
-                print("⚠️ WARN: L shoulder out of bounds!")
-            }
-            if rFixed.x > 1.0 || rFixed.y > 1.0 || rFixed.x < 0.0 || rFixed.y < 0.0 {
-                print("⚠️ WARN: R shoulder out of bounds!")
-            }
-        } else {
-            print("DEBUG_METRIC_ENTRY: missing left/right shoulder points")
-        }
+        _ = context
+        let lFixed = debugFixedPointString(point: lShldr)
+        let rFixed = debugFixedPointString(point: rShldr)
+        print("DEBUG_FIXED_COORDS: L=\(lFixed) R=\(rFixed)")
     }
 
-    private func debugLogBodyBounds(rawPoints: [String: BodyPoint], fixedPoints: [String: BodyPoint]) {
+    private func debugFixedPointString(
+        point: BodyPoint?
+    ) -> String {
+        guard let point else {
+            return "missing(no_point)"
+        }
+        let p = point.pPortrait
+        guard p.x.isFinite, p.y.isFinite,
+              p.x >= 0.0, p.x <= 1.0,
+              p.y >= 0.0, p.y <= 1.0 else {
+            return "missing(out_of_range)"
+        }
+        return String(format: "(%.3f, %.3f)", p.x, p.y)
+    }
+
+    private func debugLogBodyBounds(points: [String: BodyPoint]) {
         func bounds(for points: [String: BodyPoint]) -> (minX: Double, minY: Double, maxX: Double, maxY: Double)? {
             guard !points.isEmpty else { return nil }
             var minX = Double.greatestFiniteMagnitude
@@ -515,38 +603,13 @@ final class MetricComputer {
             return (minX, minY, maxX, maxY)
         }
 
-        if let b = bounds(for: rawPoints) {
-            print("DEBUG_RAW_BOUNDS: min=(\(String(format: "%.3f", b.minX)), \(String(format: "%.3f", b.minY))) max=(\(String(format: "%.3f", b.maxX)), \(String(format: "%.3f", b.maxY)))")
-        } else {
-            print("DEBUG_RAW_BOUNDS: empty")
-        }
-
-        if let b = bounds(for: fixedPoints) {
+        if let b = bounds(for: points) {
             print("DEBUG_FIXED_BOUNDS: min=(\(String(format: "%.3f", b.minX)), \(String(format: "%.3f", b.minY))) max=(\(String(format: "%.3f", b.maxX)), \(String(format: "%.3f", b.maxY)))")
         } else {
             print("DEBUG_FIXED_BOUNDS: empty")
         }
     }
     #endif
-}
-
-private enum OrientationFix {
-    static func apply(_ p: CGPoint) -> CGPoint {
-        CGPoint(x: p.y, y: p.x)
-    }
-
-    static func apply(_ r: CGRect) -> CGRect {
-        CGRect(x: r.minY, y: r.minX, width: r.height, height: r.width)
-    }
-
-    static func apply(_ points: [String: BodyPoint]) -> [String: BodyPoint] {
-        var out: [String: BodyPoint] = [:]
-        out.reserveCapacity(points.count)
-        for (k, v) in points {
-            out[k] = BodyPoint(pPortrait: apply(v.pPortrait), confidence: v.confidence)
-        }
-        return out
-    }
 }
 
 private enum PoseGeometry {

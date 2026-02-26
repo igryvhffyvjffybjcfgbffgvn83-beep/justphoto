@@ -55,17 +55,13 @@ struct PoseLandmarkNormalizer {
             guard loc.x.isFinite, loc.y.isFinite else {
                 continue
             }
+            guard loc.x >= 0.0, loc.x <= 1.0, loc.y >= 0.0, loc.y <= 1.0 else {
+                continue
+            }
 
             // Vision joint locations are normalized with origin bottom-left (Y-Up).
             // PoseSpec canonical is Y-Down (origin top-left), so flip Y.
-            var x = loc.x
-            var y = 1.0 - loc.y
-
-            // Last-line-of-defense clamp (prevents downstream math from going out of unit space).
-            x = min(1.0, max(0.0, x))
-            y = min(1.0, max(0.0, y))
-
-            let p = CGPoint(x: x, y: y)
+            let p = CGPoint(x: loc.x, y: 1.0 - loc.y)
             out[key] = BodyPoint(pPortrait: p, confidence: conf)
             kept += 1
         }

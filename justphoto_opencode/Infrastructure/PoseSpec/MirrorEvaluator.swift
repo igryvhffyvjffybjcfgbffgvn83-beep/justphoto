@@ -35,7 +35,12 @@ enum MirrorEvaluator {
             out[k] = mirrorLandmark(v)
         }
         // Raw observations cannot be mirrored safely; drop them.
-        return VisionPoseResult(points: out, rawObservation: nil)
+        return VisionPoseResult(
+            points: out,
+            droppedReasonsByJointKey: pose.droppedReasonsByJointKey,
+            canonicalizationStats: pose.canonicalizationStats,
+            rawObservation: nil
+        )
     }
 
     static func mirrorFace(_ face: VisionFaceResult?) -> VisionFaceResult? {

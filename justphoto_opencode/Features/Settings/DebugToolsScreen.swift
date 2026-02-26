@@ -6,6 +6,8 @@ import GRDB
 import AVFoundation
 import Photos
 import UIKit
+import CoreImage
+import ImageIO
 
 struct DebugToolsScreen: View {
     @EnvironmentObject private var promptCenter: PromptCenter
@@ -15,6 +17,8 @@ struct DebugToolsScreen: View {
     @State private var isRunning: Bool = false
     @State private var isRefTargetRunning: Bool = false
     @State private var isRefTargetLiveRunning: Bool = false
+    @State private var isMatchDeciderRunning: Bool = false
+    @State private var matchFrameSource: MatchFrameSource = .live
 
     @State private var showAlert: Bool = false
     @State private var alertTitle: String = ""
@@ -25,6 +29,23 @@ struct DebugToolsScreen: View {
 
     @State private var showingViewerDebug: Bool = false
     private static let cueStabilityLayer = CueStabilityLayer()
+    private static var matchDeciderBySessionScene: [String: MatchDecider] = [:]
+
+    private enum MatchFrameSource: String, CaseIterable, Identifiable {
+        case live
+        case `static`
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .live:
+                return "live"
+            case .static:
+                return "static"
+            }
+        }
+    }
 
     var body: some View {
 #if true
@@ -1134,12 +1155,12 @@ struct DebugToolsScreen: View {
                 Button {
                     guard !isRefTargetRunning else { return }
                     isRefTargetRunning = true
-                    statusText = "M6.16 RefTargetExtractor: running..."
+                    statusText = "M6.16 RefTargetExtractor: running...\nsource=\(matchFrameSource.rawValue)"
                     statusIsError = false
-                    print("M6.16 RefTargetExtractor: start")
+                    print("M6.16 RefTargetExtractor: start source=\(matchFrameSource.rawValue)")
 
                     Task {
-                        let result = await runRefTargetExtractorDebug()
+                        let result = await runRefTargetExtractorDebug(source: matchFrameSource)
                         await MainActor.run {
                             isRefTargetRunning = false
                             statusText = result.statusText
@@ -1214,7 +1235,66 @@ struct DebugToolsScreen: View {
                     showAlert = true
                 }
 
-                if statusText.hasPrefix("M6.16") || statusText.hasPrefix("M6.17") || statusText.hasPrefix("M6.18") {
+                Button("Reload PoseSpec & Rebuild Deciders") {
+                    Self.matchDeciderBySessionScene.removeAll()
+                    if let reloaded = TierScheduler.debugReloadPoseSpecAndRebuildDeciders() {
+                        let required = reloaded.required.joined(separator: ",")
+                        let line = "PoseSpecReloaded: scene=\(reloaded.scene) fingerprint=\(reloaded.fingerprint) required=[\(required)]"
+                        print(line)
+                        statusText = "M6.19 Reload: OK\n\nscene=\(reloaded.scene)\nfingerprint=\(reloaded.fingerprint)\nrequired=\(reloaded.required)"
+                        statusIsError = false
+                        alertTitle = "M6.19 Reload"
+                        alertMessage = line
+                    } else {
+                        statusText = "M6.19 Reload: FAILED\nno active TierScheduler (open Camera first)"
+                        statusIsError = true
+                        alertTitle = "M6.19 Reload failed"
+                        alertMessage = "No active TierScheduler. Open Camera preview, then retry."
+                    }
+                    showAlert = true
+                }
+
+                Picker("M6.19 Source", selection: $matchFrameSource) {
+                    ForEach(MatchFrameSource.allCases) { source in
+                        Text(source.title).tag(source)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                Button {
+                    guard !isMatchDeciderRunning else { return }
+                    isMatchDeciderRunning = true
+                    statusText = "M6.19 MatchDecider: running...\nsource=\(matchFrameSource.rawValue)"
+                    statusIsError = false
+                    print("M6.19 MatchDecider: start source=\(matchFrameSource.rawValue)")
+
+                    Task {
+                        let result = await runMatchDeciderDebug(source: matchFrameSource)
+                        await MainActor.run {
+                            isMatchDeciderRunning = false
+                            statusText = result.statusText
+                            statusIsError = !result.ok
+                            alertTitle = result.ok ? "M6.19" : "M6.19 failed"
+                            alertMessage = result.alertMessage
+                            showAlert = true
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Text("M6.19 MatchDecider")
+                        Spacer()
+                        if isMatchDeciderRunning {
+                            ProgressView()
+                        }
+                    }
+                }
+                .disabled(isMatchDeciderRunning)
+
+                if statusText.hasPrefix("M6.16") ||
+                    statusText.hasPrefix("M6.17") ||
+                    statusText.hasPrefix("M6.18") ||
+                    statusText.hasPrefix("M6.19")
+                {
                     Text(statusText)
                         .font(.footnote)
                         .foregroundStyle(statusIsError ? .red : .secondary)
@@ -1604,12 +1684,12 @@ struct DebugToolsScreen: View {
                 Button {
                     guard !isRefTargetRunning else { return }
                     isRefTargetRunning = true
-                    statusText = "M6.16 RefTargetExtractor: running..."
+                    statusText = "M6.16 RefTargetExtractor: running...\nsource=\(matchFrameSource.rawValue)"
                     statusIsError = false
-                    print("M6.16 RefTargetExtractor: start")
+                    print("M6.16 RefTargetExtractor: start source=\(matchFrameSource.rawValue)")
 
                     Task {
-                        let result = await runRefTargetExtractorDebug()
+                        let result = await runRefTargetExtractorDebug(source: matchFrameSource)
                         await MainActor.run {
                             isRefTargetRunning = false
                             statusText = result.statusText
@@ -1942,28 +2022,22 @@ struct DebugToolsScreen: View {
         }
     }
 
-    private func runRefTargetExtractorDebug() async -> (ok: Bool, statusText: String, alertMessage: String) {
+    private func runRefTargetExtractorDebug(source: MatchFrameSource) async -> (ok: Bool, statusText: String, alertMessage: String) {
         await Task.detached(priority: .utility) {
-            await Self.runRefTargetExtractorDebugAsync()
+            await Self.runRefTargetExtractorDebugAsync(source: source)
         }.value
     }
 
-    private static func runRefTargetExtractorDebugAsync() async -> (ok: Bool, statusText: String, alertMessage: String) {
-        await runRefTargetExtractorLiveDebugAsync()
-    }
-
-    private func runRefTargetExtractorLiveDebug() async -> (ok: Bool, statusText: String, alertMessage: String) {
-        await Task.detached(priority: .utility) {
-            await Self.runRefTargetExtractorLiveDebugAsync()
-        }.value
-    }
-
-    private static func runRefTargetExtractorLiveDebugAsync() async -> (ok: Bool, statusText: String, alertMessage: String) {
-        guard let frame = TierScheduler.debugLatestFrame() else {
+    private static func runRefTargetExtractorDebugAsync(source: MatchFrameSource) async -> (ok: Bool, statusText: String, alertMessage: String) {
+        let tag = (source == .static) ? "[STATIC]" : "[LIVE]"
+        guard let frame = resolveDebugFrame(for: source) else {
+            let msg: String = (source == .live)
+                ? "No live frame available. Open Camera and keep preview running."
+                : "Static frame unavailable. Ensure RefTargetDebug.png is bundled."
             return (
                 ok: false,
-                statusText: "M6.16 RefTargetExtractor (live): FAILED\nmissing live frame",
-                alertMessage: "No live frame available. Open Camera and keep preview running."
+                statusText: "M6.16 RefTargetExtractor (\(source.rawValue)): FAILED\nmissing \(source.rawValue) frame",
+                alertMessage: msg
             )
         }
 
@@ -1973,27 +2047,37 @@ struct DebugToolsScreen: View {
         ) else {
             return (
                 ok: false,
-                statusText: "M6.16 RefTargetExtractor (live): FAILED\nextract returned nil",
+                statusText: "M6.16 RefTargetExtractor (\(frame.label)): FAILED\nextract returned nil",
                 alertMessage: "Extractor returned nil. Check console for Vision errors."
             )
         }
 
         let summary = Self.formatMetricOutputs(output.metrics)
-        print("M6.16 RefTargetExtractor (live): metrics_count=\(output.metrics.count)")
+        print("\(tag) M6.16 RefTargetExtractor (\(frame.label)): metrics_count=\(output.metrics.count)")
         print(summary)
 
         _ = RefTargetSessionStore.shared.setTargetsForCurrentSession(metrics: output.metrics)
         let snapshot = RefTargetSessionStore.shared.currentSnapshot()
         let targetPresent = (snapshot?.targets.isEmpty == false)
         let storedCount = snapshot?.targets.count ?? 0
-        let storeLine = "M6.17 RefTargetStore: target_present=\(targetPresent) metrics=\(storedCount)"
-        print(storeLine)
+        let storeLine = "M6.17 RefTargetStore: source=\(frame.label) target_present=\(targetPresent) metrics=\(storedCount)"
+        print("\(tag) \(storeLine)")
 
         return (
             ok: true,
-            statusText: "M6.16 RefTargetExtractor (live): OK\n\n" + summary + "\n\n" + storeLine,
+            statusText: "M6.16 RefTargetExtractor (\(frame.label)): OK\n\n" + summary + "\n\n" + storeLine,
             alertMessage: "Printed target metrics to console."
         )
+    }
+
+    private func runRefTargetExtractorLiveDebug() async -> (ok: Bool, statusText: String, alertMessage: String) {
+        await Task.detached(priority: .utility) {
+            await Self.runRefTargetExtractorLiveDebugAsync()
+        }.value
+    }
+
+    private static func runRefTargetExtractorLiveDebugAsync() async -> (ok: Bool, statusText: String, alertMessage: String) {
+        await runRefTargetExtractorDebugAsync(source: .live)
     }
 
     private static func formatMetricOutputs(_ metrics: [MetricKey: MetricOutput]) -> String {
@@ -2043,6 +2127,169 @@ struct DebugToolsScreen: View {
             statusText: "M6.18 MirrorEvaluatorProbe: OK\n\n" + line,
             alertMessage: "mirrorApplied=\(chosen.mirrorApplied)"
         )
+    }
+
+    private func runMatchDeciderDebug(source: MatchFrameSource) async -> (ok: Bool, statusText: String, alertMessage: String) {
+        await Task.detached(priority: .utility) {
+            await Self.runMatchDeciderDebugAsync(source: source)
+        }.value
+    }
+
+    private static func runMatchDeciderDebugAsync(source: MatchFrameSource) async -> (ok: Bool, statusText: String, alertMessage: String) {
+        let tag = (source == .static) ? "[STATIC]" : "[LIVE]"
+        guard let frame = resolveDebugFrame(for: source) else {
+            let msg: String = (source == .live)
+                ? "No live frame available. Open Camera and keep preview running."
+                : "Static frame unavailable. Ensure RefTargetDebug.png is bundled."
+            return (
+                ok: false,
+                statusText: "M6.19 MatchDecider: FAILED\nmissing \(source.rawValue) frame",
+                alertMessage: msg
+            )
+        }
+
+        guard let snapshot = RefTargetSessionStore.shared.currentSnapshot(),
+              !snapshot.targets.isEmpty else {
+            print("\(tag) MissingRefTargets: run M6.16 (same source) first")
+            return (
+                ok: false,
+                statusText: "M6.19 MatchDecider: FAILED\nmissing ref targets",
+                alertMessage: "No RefTarget stored. MissingRefTargets: run M6.16 (same source) first"
+            )
+        }
+
+        let scene = (try? SessionRepository.shared.loadCurrentSession()?.scene) ?? "cafe"
+
+        let spec: PoseSpec
+        do {
+            spec = try PoseSpecLoader.shared.loadPoseSpec()
+        } catch {
+            return (
+                ok: false,
+                statusText: "M6.19 MatchDecider: FAILED\nPoseSpec load error",
+                alertMessage: error.localizedDescription
+            )
+        }
+
+        let fingerprint = MatchDeciderBuilder.cacheFingerprint(for: spec)
+        let cacheKey = snapshot.sessionId + "|" + scene + "|" + fingerprint
+        let decider: MatchDecider = {
+            if let cached = matchDeciderBySessionScene[cacheKey] {
+                return cached
+            }
+            let built = MatchDeciderBuilder.buildForScene(scene: scene, spec: spec)
+            matchDeciderBySessionScene[cacheKey] = built
+            return built
+        }()
+
+        let visionPipeline = VisionPipeline()
+        let width = CVPixelBufferGetWidth(frame.pixelBuffer)
+        let height = CVPixelBufferGetHeight(frame.pixelBuffer)
+        let scheduleLabel = (source == .static) ? "StaticVision" : "LiveVision"
+        print("\(tag) \(scheduleLabel): scheduled orientation=\(frame.orientation.rawValue) size=\(width)x\(height)")
+        let start = Date()
+        let vision = await visionPipeline.process(pixelBuffer: frame.pixelBuffer, orientation: frame.orientation)
+        let elapsedMs = Int(Date().timeIntervalSince(start) * 1000)
+        let pose = vision?.pose
+        let face = vision?.face
+        let jointsCount = pose?.points.count ?? 0
+        let facePointsCount = [face?.leftEyeCenter, face?.rightEyeCenter, face?.noseCenter].compactMap { $0 }.count
+        print("\(tag) \(scheduleLabel): completed pose=\(pose != nil) face=\(face != nil) joints=\(jointsCount) facePts=\(facePointsCount) elapsed_ms=\(elapsedMs)")
+        let rois = ROIComputer.compute(pose: pose, face: face)
+        let keptCount = pose?.canonicalizationStats?.kept ?? 0
+        print("\(tag) rois? \((rois != nil) ? "true" : "false")")
+        print("\(tag) BodyPointsStats: Kept=\(keptCount)")
+
+        let metricComputer = MetricComputer.makeIsolated()
+        let metrics = metricComputer.computeMetrics(
+            context: MetricContext(
+                pose: pose,
+                face: face,
+                rois: rois,
+                pixelBuffer: frame.pixelBuffer,
+                orientation: frame.orientation
+            )
+        )
+
+        let result = decider.evaluate(metrics: metrics, targets: snapshot.targets)
+        let line = "\(tag) MATCH_DECIDER: source=\(frame.label) scene=\(scene) pose=\(pose != nil) match=\(result.match) required=\(result.requiredDimensions) blocked_by=\(result.blockedBy) mirrorApplied=\(result.mirrorApplied)"
+        print(line)
+
+        let summary = "M6.19 MatchDecider: OK\n\nsource=\(frame.label)\nscene=\(scene)\n" +
+            "fingerprint=\(fingerprint)\n" +
+            "pose=\(pose != nil)\n" +
+            "required=\(result.requiredDimensions)\n" +
+            "blocked_by=\(result.blockedBy)\n" +
+            "mirrorApplied=\(result.mirrorApplied)\n" +
+            "stableExit=\(result.stableExitFramesByCueId)"
+
+        return (
+            ok: true,
+            statusText: summary,
+            alertMessage: line
+        )
+    }
+
+    private static func resolveDebugFrame(
+        for source: MatchFrameSource
+    ) -> (pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation, label: String)? {
+        switch source {
+        case .live:
+            guard let frame = TierScheduler.debugLatestFrame() else { return nil }
+            return (frame.pixelBuffer, frame.orientation, "live")
+        case .static:
+            return staticDebugFrame()
+        }
+    }
+
+    private static func staticDebugFrame() -> (pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation, label: String)? {
+        let orientation: CGImagePropertyOrientation = .up
+        guard let url = Bundle.main.url(forResource: "RefTargetDebug", withExtension: "png") else {
+            print("[STATIC] StaticImageLoad: source=static bundle_url_found=false path=<nil> size=<nil> pixelBuffer=fail orientation=\(orientation.rawValue)")
+            return nil
+        }
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+            print("[STATIC] StaticImageLoad: source=static bundle_url_found=true path=\(url.path) size=<nil> pixelBuffer=fail orientation=\(orientation.rawValue)")
+            return nil
+        }
+        let size = "\(image.width)x\(image.height)"
+        guard let pixelBuffer = pixelBuffer(from: image) else {
+            print("[STATIC] StaticImageLoad: source=static bundle_url_found=true path=\(url.path) size=\(size) pixelBuffer=fail orientation=\(orientation.rawValue)")
+            return nil
+        }
+        print("[STATIC] StaticImageLoad: source=static bundle_url_found=true path=\(url.path) size=\(size) pixelBuffer=ok orientation=\(orientation.rawValue)")
+        return (pixelBuffer, orientation, "static")
+    }
+
+    private static func pixelBuffer(from image: CGImage) -> CVPixelBuffer? {
+        let attrs: [CFString: Any] = [
+            kCVPixelBufferCGImageCompatibilityKey: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey: true,
+            kCVPixelBufferIOSurfacePropertiesKey: [:],
+        ]
+        var buffer: CVPixelBuffer?
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            image.width,
+            image.height,
+            kCVPixelFormatType_32BGRA,
+            attrs as CFDictionary,
+            &buffer
+        )
+        guard status == kCVReturnSuccess, let buffer else {
+            return nil
+        }
+
+        let ciImage = CIImage(cgImage: image)
+        let context = CIContext(options: nil)
+        context.render(
+            ciImage,
+            to: buffer,
+            bounds: CGRect(x: 0, y: 0, width: image.width, height: image.height),
+            colorSpace: CGColorSpaceCreateDeviceRGB()
+        )
+        return buffer
     }
 
     private func m429_injectAndHealPhantomAsset() async -> (ok: Bool, statusText: String, alertMessage: String) {

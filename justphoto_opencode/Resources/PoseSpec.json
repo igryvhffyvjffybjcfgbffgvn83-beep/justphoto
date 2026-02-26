@@ -185,13 +185,13 @@
         "withRef": {
           "error": "centerXOffset - target.centerXOffset",
           "warn": {
-            ">": 0.07
+            ">": 0.14
           },
           "hard": {
-            ">": 0.12
+            ">": 0.2
           },
           "exit": {
-            "<=": 0.04
+            "<=": 0.1
           }
         },
         "noRef": {
@@ -240,7 +240,7 @@
         "fallbackCueId": "FRAME_GENERAL"
       },
       "antiJitter": {
-        "persistFrames": 6,
+        "persistFrames": 4,
         "minHoldMs": 3000,
         "cooldownMs": 800
       },
@@ -280,13 +280,13 @@
         "withRef": {
           "error": "centerXOffset - target.centerXOffset",
           "warn": {
-            "<": -0.07
+            "<": -0.14
           },
           "hard": {
-            "<": -0.12
+            "<": -0.2
           },
           "exit": {
-            ">=": -0.04
+            ">=": -0.1
           }
         },
         "noRef": {
@@ -335,7 +335,7 @@
         "fallbackCueId": "FRAME_GENERAL"
       },
       "antiJitter": {
-        "persistFrames": 6,
+        "persistFrames": 4,
         "minHoldMs": 3000,
         "cooldownMs": 800
       },
@@ -375,13 +375,13 @@
         "withRef": {
           "error": "centerYOffset - target.centerYOffset",
           "warn": {
-            ">": 0.08
-          },
-          "hard": {
             ">": 0.14
           },
+          "hard": {
+            ">": 0.2
+          },
           "exit": {
-            "<=": 0.06
+            "<=": 0.1
           }
         },
         "noRef": {
@@ -430,7 +430,7 @@
         "fallbackCueId": "FRAME_GENERAL"
       },
       "antiJitter": {
-        "persistFrames": 6,
+        "persistFrames": 4,
         "minHoldMs": 3000,
         "cooldownMs": 800
       },
@@ -470,13 +470,13 @@
         "withRef": {
           "error": "centerYOffset - target.centerYOffset",
           "warn": {
-            "<": -0.08
-          },
-          "hard": {
             "<": -0.14
           },
+          "hard": {
+            "<": -0.2
+          },
           "exit": {
-            ">=": -0.06
+            ">=": -0.1
           }
         },
         "noRef": {
@@ -525,7 +525,7 @@
         "fallbackCueId": "FRAME_GENERAL"
       },
       "antiJitter": {
-        "persistFrames": 6,
+        "persistFrames": 4,
         "minHoldMs": 3000,
         "cooldownMs": 800
       },
@@ -562,28 +562,17 @@
         ]
       },
       "trigger": {
-        "withRef": {
-          "error": "bboxHeight - target.bboxHeight",
-          "warn": {
-            "<": -0.06
-          },
-          "hard": {
-            "<": -0.12
-          },
-          "exit": {
-            ">=": -0.06
-          }
-        },
+        "withRef": null,
         "noRef": {
           "idealRange": [
             0.55,
             0.78
           ],
           "warn": {
-            "<": 0.49
+            "<": 0.45
           },
           "hard": {
-            "<": 0.43
+            "<": 0.37
           },
           "exit": {
             ">=": 0.55
@@ -622,7 +611,7 @@
         "fallbackCueId": "FRAME_GENERAL"
       },
       "antiJitter": {
-        "persistFrames": 6,
+        "persistFrames": 4,
         "minHoldMs": 3000,
         "cooldownMs": 800
       },
@@ -659,25 +648,14 @@
         ]
       },
       "trigger": {
-        "withRef": {
-          "error": "bboxHeight - target.bboxHeight",
-          "warn": {
-            ">": 0.05
-          },
-          "hard": {
-            ">": 0.1
-          },
-          "exit": {
-            "<=": 0.05
-          }
-        },
+        "withRef": null,
         "noRef": {
           "idealMax": 0.78,
           "warn": {
-            ">": 0.83
+            ">": 0.88
           },
           "hard": {
-            ">": 0.88
+            ">": 0.96
           },
           "exit": {
             "<=": 0.78
@@ -716,7 +694,7 @@
         "fallbackCueId": "FRAME_GENERAL"
       },
       "antiJitter": {
-        "persistFrames": 6,
+        "persistFrames": 4,
         "minHoldMs": 3000,
         "cooldownMs": 800
       },
@@ -752,25 +730,14 @@
         ]
       },
       "trigger": {
-        "withRef": {
-          "error": "headroom - target.headroom",
-          "warn": {
-            "<": -0.02
-          },
-          "hard": {
-            "<": -0.05
-          },
-          "exit": {
-            ">=": 0.09
-          }
-        },
+        "withRef": null,
         "noRef": {
           "idealMin": 0.07,
           "warn": {
-            "<": 0.05
+            "<": 0.0
           },
           "hard": {
-            "<": 0.02
+            "<": -0.03
           },
           "exit": {
             ">=": 0.09
@@ -810,7 +777,7 @@
         "fallbackCueId": "FRAME_GENERAL"
       },
       "antiJitter": {
-        "persistFrames": 6,
+        "persistFrames": 4,
         "minHoldMs": 3000,
         "cooldownMs": 800
       },
@@ -845,25 +812,14 @@
         ]
       },
       "trigger": {
-        "withRef": {
-          "error": "bottomMargin - target.bottomMargin",
+        "withRef": null,
+        "noRef": {
+          "idealMin": 0.05,
           "warn": {
             "<": -0.02
           },
           "hard": {
             "<": -0.05
-          },
-          "exit": {
-            ">=": 0.05
-          }
-        },
-        "noRef": {
-          "idealMin": 0.05,
-          "warn": {
-            "<": 0.03
-          },
-          "hard": {
-            "<": 0.0
           },
           "exit": {
             ">=": 0.05
@@ -903,7 +859,7 @@
         "fallbackCueId": "FRAME_GENERAL"
       },
       "antiJitter": {
-        "persistFrames": 6,
+        "persistFrames": 4,
         "minHoldMs": 3000,
         "cooldownMs": 800
       },
@@ -941,13 +897,13 @@
         "withRef": {
           "error": "shoulderAngleDeg - target.shoulderAngleDeg",
           "warn": {
-            ">": 8
+            ">": 13
           },
           "hard": {
-            ">": 14
+            ">": 15
           },
           "exit": {
-            "<=": 5
+            "<=": 10
           }
         },
         "noRef": {
@@ -1001,7 +957,7 @@
         "fallbackCueId": "FRAME_GENERAL"
       },
       "antiJitter": {
-        "persistFrames": 6,
+        "persistFrames": 4,
         "minHoldMs": 3000,
         "cooldownMs": 800
       },
@@ -1039,13 +995,13 @@
         "withRef": {
           "error": "shoulderAngleDeg - target.shoulderAngleDeg",
           "warn": {
-            "<": -8
+            "<": -13
           },
           "hard": {
-            "<": -14
+            "<": -15
           },
           "exit": {
-            ">=": -5
+            ">=": -10
           }
         },
         "noRef": {
@@ -1099,7 +1055,7 @@
         "fallbackCueId": "FRAME_GENERAL"
       },
       "antiJitter": {
-        "persistFrames": 6,
+        "persistFrames": 4,
         "minHoldMs": 3000,
         "cooldownMs": 800
       },
@@ -1137,13 +1093,13 @@
         "withRef": {
           "error": "hipAngleDeg - target.hipAngleDeg",
           "warn": {
-            "abs>": 10
+            "abs>": 19
           },
           "hard": {
-            "abs>": 16
+            "abs>": 21
           },
           "exit": {
-            "abs<=": 6
+            "abs<=": 14
           }
         },
         "noRef": {
@@ -1187,7 +1143,7 @@
         "fallbackCueId": "FRAME_GENERAL"
       },
       "antiJitter": {
-        "persistFrames": 6,
+        "persistFrames": 4,
         "minHoldMs": 3000,
         "cooldownMs": 800
       },
@@ -1227,13 +1183,13 @@
         "withRef": {
           "error": "torsoLeanAngleDeg - target.torsoLeanAngleDeg",
           "warn": {
-            "abs>": 10
+            "abs>": 19
           },
           "hard": {
-            "abs>": 16
+            "abs>": 21
           },
           "exit": {
-            "abs<=": 6
+            "abs<=": 14
           }
         },
         "noRef": {
@@ -1281,7 +1237,7 @@
         "fallbackCueId": "FRAME_GENERAL"
       },
       "antiJitter": {
-        "persistFrames": 6,
+        "persistFrames": 4,
         "minHoldMs": 3000,
         "cooldownMs": 800
       },
@@ -1319,13 +1275,13 @@
         "withRef": {
           "error": "eyeLineAngleDeg - target.eyeLineAngleDeg",
           "warn": {
-            "abs>": 7
+            "abs>": 13
           },
           "hard": {
-            "abs>": 12
+            "abs>": 15
           },
           "exit": {
-            "abs<=": 4
+            "abs<=": 10
           }
         },
         "noRef": {
@@ -1373,7 +1329,7 @@
         "fallbackCueId": "FRAME_GENERAL"
       },
       "antiJitter": {
-        "persistFrames": 6,
+        "persistFrames": 3,
         "minHoldMs": 3000,
         "cooldownMs": 800
       },
@@ -1409,21 +1365,7 @@
         ]
       },
       "trigger": {
-        "withRef": {
-          "error": "noseToChinRatio - target.noseToChinRatio",
-          "warn": {
-            "<": -0.02
-          },
-          "hard": {
-            "<": -0.04
-          },
-          "exit": {
-            "between": [
-              0.36,
-              0.42
-            ]
-          }
-        },
+        "withRef": null,
         "noRef": {
           "idealRange": [
             0.36,
@@ -1476,7 +1418,7 @@
         "fallbackCueId": "FRAME_GENERAL"
       },
       "antiJitter": {
-        "persistFrames": 6,
+        "persistFrames": 3,
         "minHoldMs": 3000,
         "cooldownMs": 800
       },
@@ -1512,21 +1454,7 @@
         ]
       },
       "trigger": {
-        "withRef": {
-          "error": "noseToChinRatio - target.noseToChinRatio",
-          "warn": {
-            ">": 0.02
-          },
-          "hard": {
-            ">": 0.04
-          },
-          "exit": {
-            "between": [
-              0.36,
-              0.42
-            ]
-          }
-        },
+        "withRef": null,
         "noRef": {
           "idealRange": [
             0.36,
@@ -1579,7 +1507,7 @@
         "fallbackCueId": "FRAME_GENERAL"
       },
       "antiJitter": {
-        "persistFrames": 6,
+        "persistFrames": 3,
         "minHoldMs": 3000,
         "cooldownMs": 800
       },
@@ -4400,6 +4328,27 @@
       "items": [
         "FRAME_GENERAL priority -> 1 to avoid overriding actionable cues under priority_desc selection",
         "antiJitter.cooldownMs -> 800ms to reduce flicker/re-trigger after exit"
+      ]
+    },
+    {
+      "version": "v1.1.4-hotfix",
+      "date": "2026-02-25",
+      "notes": [
+        "v1.1.4-hotfix: 调整 base 场景 withRef 的 exit 阈值与 persistFrames 适配真实人体姿态，同步外移 warn/hard 防噪声，提升 3 秒内达标率"
+      ]
+    },
+    {
+      "version": "v1.1.4-final",
+      "date": "2026-02-25",
+      "notes": [
+        "v1.1.4-final: 将头顶/裁脚/距离降级为非强匹配(withRef=N)，并将姿态/下巴 exit 放宽至人类自然物理极值，大幅提升出片率"
+      ]
+    },
+    {
+      "version": "v1.1.4-final-hotreload",
+      "date": "2026-02-25",
+      "notes": [
+        "v1.1.4-final-hotreload: 将 CHIN_UP/CHIN_DOWN 降级为非强匹配(withRef=N/null)，用于消除焦段与脸型漂移导致的强阻断"
       ]
     }
   ],

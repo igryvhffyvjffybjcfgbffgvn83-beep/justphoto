@@ -37,7 +37,14 @@ enum ROIComputer {
 
             let valid = landmarks.filter {
                 let c = $0.confidence ?? 0
-                return c > 0 && $0.pPortrait.x.isFinite && $0.pPortrait.y.isFinite
+                return c.isFinite &&
+                    c >= rules.minLandmarkConfidence &&
+                    $0.pPortrait.x.isFinite &&
+                    $0.pPortrait.y.isFinite &&
+                    $0.pPortrait.x >= 0.0 &&
+                    $0.pPortrait.x <= 1.0 &&
+                    $0.pPortrait.y >= 0.0 &&
+                    $0.pPortrait.y <= 1.0
             }
             guard !valid.isEmpty else {
                 #if DEBUG
@@ -454,7 +461,11 @@ private struct PoseSpecROIRules: Sendable {
         }
 
         // If the JSON changes or decoding succeeds with unexpected zeros, keep safe defaults.
+        if !minConf.isFinite {
+            minConf = defaults.minLandmarkConfidence
+        }
         if minConf <= 0 { minConf = defaults.minLandmarkConfidence }
+        if minConf > 1 { minConf = 1 }
         if facePadX < 0 { facePadX = defaults.facePadX }
         if facePadY < 0 { facePadY = defaults.facePadY }
 

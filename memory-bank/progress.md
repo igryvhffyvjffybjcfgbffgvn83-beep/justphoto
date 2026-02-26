@@ -167,8 +167,20 @@ Notes / Known limitations (track for later milestones):
 - [x] M6.17 Store RefTarget in session-scoped storage (and clear on reset)
 - [x] M6.18 Create MirrorEvaluator (x=0.5)
 - [ ] M6.19 Create MatchDecider = “PoseSpec exit equivalence” (PRD 5.1.1.a)
+- [x] M6.19-P0 MatchDecider cache fingerprint + DebugTools hot reload
+- [x] M6.19-P1 Static image hook (live/static) for deterministic Match validation
+- [x] M6.19-P2 CHIN_UP/CHIN_DOWN downgraded to non-strong-match (withRef=null)
+- [x] M6.19-P0 Hotfix: Vision starvation + T0 blocking fix (orientation mapping + async Vision dispatch)
 - [ ] M6.20 Emit `withref_match_state` (A.13)
 - [ ] M6.21 Emit `withref_fallback` (A.13)
+
+M6.19 P0-P2 sprint notes (2026-02-26):
+- MatchDecider cache key upgraded to `scene|poseSpecFingerprint`; DebugTools cache key upgraded to `session|scene|fingerprint`.
+- Added DebugTools action: `Reload PoseSpec & Rebuild Deciders` (no process restart needed).
+- Added DebugTools `M6.19 Source` switch (`live|static`) and static-frame full-chain evaluation path.
+- Added required probe output: `source`, `scene`, `pose`, `required`, `blocked_by`, `mirrorApplied`.
+- P0 Hotfix: `CameraFrameSource` orientation mapping now prefers `AVCaptureConnection.videoOrientation` (with mirrored handling) and no longer hardcodes back portrait to `.left`.
+- P0 Hotfix: `VisionPipeline` request execution moved off `performQueue.sync` to async continuation dispatch; `TierScheduler` no longer holds T0 gate across model runtime.
 
 ## Milestone 7 — Reference Images (Import, Gates, Copy-to-Album, Overlay, Limits)
 

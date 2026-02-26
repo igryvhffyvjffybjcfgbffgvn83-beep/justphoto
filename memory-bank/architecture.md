@@ -137,7 +137,7 @@ M4.4 (Workset full flow):
     - `justphoto_opencode/Infrastructure/PoseSpec/VisionPipeline.swift` defines `TierScheduler` with a latest-frame gate, T0 (15Hz) + T1 (2Hz) timers, per-tier serial queues, and in-flight skip gates.
     - `justphoto_opencode/Features/Camera/CameraScreen.swift` sends camera frames to `TierScheduler` (O(1) cache in the frame callback).
     - Thermal degradation: when system thermal state >= serious, pause T1 and drop T0 target to 8Hz (restores when thermal recovers).
-    - T0 Vision runs on an async task with a timeout fail-open (drops frame on timeout) to avoid blocking the tier queue.
+    - T0 Vision runs as async dispatch on a dedicated Vision perform queue; the T0 in-flight gate only protects scheduling (not model runtime), preventing queue starvation.
     - Observability: `TierScheduler` prints 1Hz aggregate logs with ticks/s, avg/max durations, in-flight skip counts, and T0 timeouts.
     - DebugTools: can inject a Vision delay to validate T0 timeout behavior.
   - Cue evaluator (M6.12 Phase A):

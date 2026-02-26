@@ -3,6 +3,7 @@ import Foundation
 enum PoseSpecLoaderError: Error, LocalizedError {
     case missingResource
     case invalidJSON
+    case invalidConfidenceRange
 
     var errorDescription: String? {
         switch self {
@@ -10,6 +11,8 @@ enum PoseSpecLoaderError: Error, LocalizedError {
             return "PoseSpec.json not found in app bundle"
         case .invalidJSON:
             return "PoseSpec.json is not valid / decodable"
+        case .invalidConfidenceRange:
+            return "PoseSpec confidence values must be finite and in [0,1]"
         }
     }
 }
@@ -29,8 +32,14 @@ final class PoseSpecLoader {
     func loadPoseSpec(bundle: Bundle = .main, applyDebugPatch: Bool = true) throws -> PoseSpec {
         let data = try loadData(bundle: bundle, applyDebugPatch: applyDebugPatch)
         do {
-            return try JSONDecoder().decode(PoseSpec.self, from: data)
+            let spec = try JSONDecoder().decode(PoseSpec.self, from: data)
+            try validateConfidence(spec: spec)
+            JPDebugPrint("PoseSpecLoadedFromBundle | Version: \(spec.prdVersion) | Latest Log: \(spec.changeLog.last?.notes?.last ?? spec.changeLog.last?.changes?.last ?? spec.changeLog.last?.items?.last ?? spec.changeLog.last?.scope ?? spec.changeLog.last?.version ?? "n/a")")
+            return spec
         } catch {
+            if let error = error as? PoseSpecLoaderError {
+                throw error
+            }
             throw PoseSpecLoaderError.invalidJSON
         }
     }
@@ -62,6 +71,19 @@ final class PoseSpecLoader {
 #endif
 
         return raw
+    }
+
+    private func validateConfidence(spec: PoseSpec) throws {
+        let minConfidence = spec.defaults.confidence.minConfidence
+        let minLandmarkConfidence = spec.defaults.confidence.minLandmarkConfidence
+        guard minConfidence.isFinite,
+              minLandmarkConfidence.isFinite,
+              minConfidence >= 0.0,
+              minConfidence <= 1.0,
+              minLandmarkConfidence >= 0.0,
+              minLandmarkConfidence <= 1.0 else {
+            throw PoseSpecLoaderError.invalidConfidenceRange
+        }
     }
 
 #if DEBUG

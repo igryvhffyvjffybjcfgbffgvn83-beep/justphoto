@@ -188,24 +188,34 @@ extension CameraFrameSource: AVCaptureVideoDataOutputSampleBufferDelegate {
         lastDeliveredTsMs = tsMs
 
 #if canImport(UIKit)
+        let mirrored = connection.isVideoMirrored || isFrontCamera
         let cgOrientation: CGImagePropertyOrientation
-        switch getCachedInterfaceOrientation() {
-        case .portrait:
-            // AVCaptureVideoDataOutput pixel buffers are typically delivered in the camera sensor
-            // orientation (landscape). For Vision, we must provide the EXIF orientation that
-            // describes how to rotate the buffer into the UI's portrait-up space.
-            // NOTE: Empirically, our pipeline expects the opposite 90deg for this device class;
-            // using `.right` here results in a 180deg error after normalization (bottom-right -> top-left).
-            // So we use `.left` for back camera portrait.
-            cgOrientation = isFrontCamera ? .rightMirrored : .left
-        case .portraitUpsideDown:
-            cgOrientation = isFrontCamera ? .leftMirrored : .right
-        case .landscapeLeft:
-            cgOrientation = isFrontCamera ? .downMirrored : .down
-        case .landscapeRight:
-            cgOrientation = isFrontCamera ? .upMirrored : .up
-        default:
-            cgOrientation = isFrontCamera ? .rightMirrored : .left
+        if connection.isVideoOrientationSupported {
+            switch connection.videoOrientation {
+            case .portrait:
+                cgOrientation = mirrored ? .leftMirrored : .right
+            case .portraitUpsideDown:
+                cgOrientation = mirrored ? .rightMirrored : .left
+            case .landscapeRight:
+                cgOrientation = mirrored ? .upMirrored : .down
+            case .landscapeLeft:
+                cgOrientation = mirrored ? .downMirrored : .up
+            @unknown default:
+                cgOrientation = mirrored ? .leftMirrored : .right
+            }
+        } else {
+            switch getCachedInterfaceOrientation() {
+            case .portrait:
+                cgOrientation = isFrontCamera ? .leftMirrored : .right
+            case .portraitUpsideDown:
+                cgOrientation = isFrontCamera ? .rightMirrored : .left
+            case .landscapeLeft:
+                cgOrientation = isFrontCamera ? .downMirrored : .up
+            case .landscapeRight:
+                cgOrientation = isFrontCamera ? .upMirrored : .down
+            default:
+                cgOrientation = isFrontCamera ? .leftMirrored : .right
+            }
         }
         #else
         let cgOrientation: CGImagePropertyOrientation = isFrontCamera ? .upMirrored : .up
@@ -326,13 +336,13 @@ extension CameraFrameSource {
 }
 
 extension CameraFrameSource {
-    private func getCachedInterfaceOrientation() -> UIInterfaceOrientation? {
+    nonisolated private func getCachedInterfaceOrientation() -> UIInterfaceOrientation? {
         interfaceOrientationLock.lock()
         defer { interfaceOrientationLock.unlock() }
         return cachedInterfaceOrientation
     }
 
-    private func setCachedInterfaceOrientation(_ v: UIInterfaceOrientation?) {
+    nonisolated private func setCachedInterfaceOrientation(_ v: UIInterfaceOrientation?) {
         interfaceOrientationLock.lock()
         defer { interfaceOrientationLock.unlock() }
         cachedInterfaceOrientation = v

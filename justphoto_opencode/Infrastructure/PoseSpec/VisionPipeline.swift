@@ -31,6 +31,8 @@ struct VisionLandmark: Sendable {
 struct VisionPoseResult: Sendable {
     // Canonical keys that match PoseSpec binding paths (e.g. body.leftShoulder).
     let points: [String: VisionLandmark]
+    let droppedReasonsByJointKey: [String: PosePointDropReason]
+    let canonicalizationStats: PoseCanonicalizationStats?
 
     // Phase 1: Preserve the raw observation for MetricComputer's normalization adapter.
     // This is wrapped as @unchecked Sendable so we can pass it through Task.detached boundaries.
@@ -66,6 +68,7 @@ actor VisionPipeline {
     private let sequenceHandler = VNSequenceRequestHandler()
     private let poseRequest = VNDetectHumanBodyPoseRequest()
     private let faceRequest = VNDetectFaceLandmarksRequest()
+    private let performQueue = DispatchQueue(label: "justphoto.vision.perform", qos: .userInitiated)
 
     private var isProcessing: Bool = false
 
@@ -94,7 +97,7 @@ actor VisionPipeline {
         let shouldPrint = (tsMs - lastDebugPrintTsMs) >= 1000
 
         do {
-            try sequenceHandler.perform([poseRequest, faceRequest], on: pixelBuffer, orientation: orientation)
+            try await performVisionRequests(pixelBuffer: pixelBuffer, orientation: orientation)
         } catch {
             #if DEBUG
             if shouldPrint {
@@ -139,6 +142,25 @@ actor VisionPipeline {
     }
     #endif
 
+    private func performVisionRequests(
+        pixelBuffer: CVPixelBuffer,
+        orientation: CGImagePropertyOrientation
+    ) async throws {
+        let handler = sequenceHandler
+        let pose = poseRequest
+        let face = faceRequest
+        try await withCheckedThrowingContinuation { continuation in
+            performQueue.async {
+                do {
+                    try handler.perform([pose, face], on: pixelBuffer, orientation: orientation)
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
     // M6.8 Hotfix (Relax Logic): if Vision produced an observation, return a non-nil pose.
     // Do NOT discard the entire pose due to confidence thresholds or missing core joints.
     private func parsePose(orientation: CGImagePropertyOrientation, debugEnabled: Bool) -> VisionPoseResult? {
@@ -148,35 +170,15 @@ actor VisionPipeline {
 
         // Use the first observation (Vision typically sorts by confidence).
         let obs = results[0]
-        let all: [VNHumanBodyPoseObservation.JointName: VNRecognizedPoint]
-        do {
-            all = try obs.recognizedPoints(.all)
-        } catch {
-            #if DEBUG
-            if debugEnabled {
-                print("DEBUG_PIPELINE: pose_recognizedPoints_failed err=\(error)")
-            }
-            #endif
-            return VisionPoseResult(points: [:], rawObservation: nil)
-        }
-
-        var out: [String: VisionLandmark] = [:]
-
-        var confPosCount = 0
-        var maxConf: Float = 0
-
-        // Map all recognized joints to canonical keys.
-        for (jointKey, rp) in all {
-            if rp.confidence > 0 { confPosCount += 1 }
-            if rp.confidence > maxConf { maxConf = rp.confidence }
-            let key = "body." + String(describing: jointKey)
-            let p = PoseSpecCoordinateNormalizer.shared.normalize(rp.location, sourceOrientation: orientation)
-            out[key] = VisionLandmark(pPortrait: p, confidence: rp.confidence, aspectRatioHeightOverWidth: nil, precisionEstimatesPerPoint: nil)
-        }
+        let canonical = PoseCanonicalizer.canonicalize(observation: obs, orientation: orientation)
+        let out = canonical.points
 
         #if DEBUG
         if debugEnabled {
-            print("DEBUG_PIPELINE: pose_obs0 joints_total=\(all.count) conf>0=\(confPosCount) maxConf=\(String(format: "%.2f", maxConf))")
+            let stats = canonical.stats
+            print(
+                "DEBUG_PIPELINE: pose_obs0 joints_total=\(stats.totalCandidates) kept=\(stats.kept) dropped=\(stats.dropped) threshold=\(String(format: "%.2f", stats.threshold))"
+            )
 
             // Print a small, stable subset of joints for quick sanity.
             let coreKeys: [(VNHumanBodyPoseObservation.JointName, String)] = [
@@ -188,16 +190,25 @@ actor VisionPipeline {
                 (.rightHip, "rightHip"),
             ]
             for (jn, name) in coreKeys {
-                if let rp = all[jn] {
-                    print("DEBUG_PIPELINE: pose_joint \(name) conf=\(String(format: "%.2f", rp.confidence)) loc=\(rp.location)")
+                guard let canonicalKey = LandmarkBindings.bodyJointToCanonicalKey[jn] else { continue }
+                if let landmark = out[canonicalKey] {
+                    print(
+                        "DEBUG_PIPELINE: pose_joint \(name) conf=\(String(format: "%.2f", landmark.confidence ?? 0)) loc=\(landmark.pPortrait)"
+                    )
                 } else {
-                    print("DEBUG_PIPELINE: pose_joint \(name) missing")
+                    let dropped = canonical.droppedReasonsByJointKey[canonicalKey]?.rawValue ?? PosePointDropReason.missingInput.rawValue
+                    print("DEBUG_PIPELINE: pose_joint \(name) missing reason=\(dropped)")
                 }
             }
         }
         #endif
 
-        return VisionPoseResult(points: out, rawObservation: UncheckedSendablePoseObservation(observation: obs))
+        return VisionPoseResult(
+            points: out,
+            droppedReasonsByJointKey: canonical.droppedReasonsByJointKey,
+            canonicalizationStats: canonical.stats,
+            rawObservation: UncheckedSendablePoseObservation(observation: obs)
+        )
     }
 
     // M6.8 Hotfix (Relax Logic): if Vision produced a face observation, return a non-nil face.
@@ -453,6 +464,12 @@ final class TierScheduler: ObservableObject {
     private var thermalObserver: NSObjectProtocol? = nil
 
     private var lastConsolePrintTsMs: Int = 0
+    private var lastMatchConsolePrintTsMs: Int = 0
+
+    private var matchDeciderByScene: [String: MatchDecider] = [:]
+    private var matchDeciderSpec: PoseSpec? = nil
+    private var matchDeciderSpecFingerprint: String? = nil
+    private var matchDeciderSessionId: String? = nil
 
     #if DEBUG
     private struct TierStats {
@@ -513,6 +530,11 @@ final class TierScheduler: ObservableObject {
         return (packet.pixelBuffer, packet.orientation)
     }
 
+    static func debugReloadPoseSpecAndRebuildDeciders() -> (scene: String, fingerprint: String, required: [String])? {
+        guard let instance = latestInstance else { return nil }
+        return instance.reloadPoseSpecAndRebuildDeciders()
+    }
+
     private func startTimers() {
         configureTimers(t0IntervalNs: currentT0IntervalNs, t1Enabled: t1Enabled)
     }
@@ -551,14 +573,12 @@ final class TierScheduler: ObservableObject {
                 gate.exit()
                 return
             }
+            // Do not hold T0 gate for model runtime; only guard scheduling.
+            gate.exit()
 
-            // T0: run Vision on the latest frame only, without blocking the tier queue.
+            // T0: run Vision on the latest frame only.
             Task(priority: .userInitiated) { [weak self] in
-                guard let self else {
-                    gate.exit()
-                    return
-                }
-                defer { gate.exit() }
+                guard let self else { return }
 
                 #if DEBUG
                 let startNs = DispatchTime.now().uptimeNanoseconds
@@ -613,10 +633,10 @@ final class TierScheduler: ObservableObject {
             }
 
             #if DEBUG
-            print("DEBUG_T1: Context has buffer? true rois? \((rois != nil) ? "true" : "false")")
+            print("[SCHED_T1] Context has buffer? true rois? \((rois != nil) ? "true" : "false")")
             #endif
 
-            _ = MetricComputer.shared.computeMetrics(
+            let metrics = MetricComputer.shared.computeMetrics(
                 context: MetricContext(
                     pose: pose,
                     face: face,
@@ -625,6 +645,7 @@ final class TierScheduler: ObservableObject {
                     orientation: frame.orientation
                 )
             )
+            self.evaluateWithRefMatchIfPossible(metrics: metrics)
 
             #if DEBUG
             let endNs = DispatchTime.now().uptimeNanoseconds
@@ -664,41 +685,89 @@ final class TierScheduler: ObservableObject {
         return cachedROIs
     }
 
-    private enum VisionOutcome {
-        case completed(VisionFrameResult?)
-        case timedOut
+    private func processVision(frame: FramePacket) async -> VisionFrameResult? {
+        await VisionPipeline.shared.process(
+            pixelBuffer: frame.pixelBuffer,
+            orientation: frame.orientation
+        )
     }
 
-    private let t0VisionTimeoutNs: UInt64 = 250_000_000
-
-    private func processVision(frame: FramePacket) async -> VisionFrameResult? {
-        let outcome = await withTaskGroup(of: VisionOutcome.self) { group in
-            group.addTask {
-                let result = await VisionPipeline.shared.process(
-                    pixelBuffer: frame.pixelBuffer,
-                    orientation: frame.orientation
-                )
-                return .completed(result)
-            }
-            group.addTask { [t0VisionTimeoutNs] in
-                try? await Task.sleep(nanoseconds: t0VisionTimeoutNs)
-                return .timedOut
-            }
-
-            let first = await group.next() ?? .timedOut
-            group.cancelAll()
-            return first
+    private func evaluateWithRefMatchIfPossible(metrics: [MetricKey: MetricOutput]) {
+        guard let snapshot = RefTargetSessionStore.shared.currentSnapshot(),
+              !snapshot.targets.isEmpty else {
+            return
         }
 
-        switch outcome {
-        case .completed(let result):
-            return result
-        case .timedOut:
-            #if DEBUG
-            recordSkipTimeout(tier: .t0)
-            #endif
+        let currentSession = try? SessionRepository.shared.loadCurrentSession()
+        let sessionId = currentSession?.sessionId ?? snapshot.sessionId
+        if matchDeciderSessionId != sessionId {
+            matchDeciderSessionId = sessionId
+            for decider in matchDeciderByScene.values {
+                decider.reset()
+            }
+        }
+
+        let scene = currentSession?.scene ?? "cafe"
+        guard let decider = matchDecider(for: scene) else {
+            return
+        }
+
+        let result = decider.evaluate(metrics: metrics, targets: snapshot.targets)
+
+        #if DEBUG
+        let now = nowMs()
+        if now - lastMatchConsolePrintTsMs >= 1000 {
+            lastMatchConsolePrintTsMs = now
+            print(
+                "[SCHED_T1] MATCH_DECIDER: match=\(result.match) blocked_by=\(result.blockedBy) mirrorApplied=\(result.mirrorApplied)"
+            )
+        }
+        #endif
+    }
+
+    private func matchDecider(for scene: String) -> MatchDecider? {
+        guard let (spec, fingerprint) = deciderSpecSnapshot() else {
             return nil
         }
+        let key = deciderCacheKey(scene: scene, fingerprint: fingerprint)
+        if let cached = matchDeciderByScene[key] {
+            return cached
+        }
+        let built = MatchDeciderBuilder.buildForScene(scene: scene, spec: spec)
+        matchDeciderByScene[key] = built
+        return built
+    }
+
+    private func deciderSpecSnapshot() -> (spec: PoseSpec, fingerprint: String)? {
+        if let spec = matchDeciderSpec, let fingerprint = matchDeciderSpecFingerprint {
+            return (spec, fingerprint)
+        }
+        guard let spec = try? PoseSpecLoader.shared.loadPoseSpec() else {
+            return nil
+        }
+        let fingerprint = MatchDeciderBuilder.cacheFingerprint(for: spec)
+        matchDeciderSpec = spec
+        matchDeciderSpecFingerprint = fingerprint
+        return (spec, fingerprint)
+    }
+
+    private func deciderCacheKey(scene: String, fingerprint: String) -> String {
+        "\(scene)|\(fingerprint)"
+    }
+
+    private func reloadPoseSpecAndRebuildDeciders() -> (scene: String, fingerprint: String, required: [String])? {
+        matchDeciderByScene.removeAll()
+        matchDeciderSpec = nil
+        matchDeciderSpecFingerprint = nil
+
+        let scene = (try? SessionRepository.shared.loadCurrentSession()?.scene) ?? "cafe"
+        guard let (spec, fingerprint) = deciderSpecSnapshot() else { return nil }
+
+        let decider = MatchDeciderBuilder.buildForScene(scene: scene, spec: spec)
+        let key = deciderCacheKey(scene: scene, fingerprint: fingerprint)
+        matchDeciderByScene[key] = decider
+        decider.reset()
+        return (scene, fingerprint, decider.debugRequiredCueIds())
     }
 
     private func publishVision(result: VisionFrameResult, rois: ROISet?) {
